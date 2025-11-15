@@ -7,13 +7,20 @@
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",
-    "test": "jest"
+    "test": "jest",
+    "generateAPK": "react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res && cd android && ./gradlew assembleDebug && cd .."
   },
   "dependencies": {
+    "@react-native/new-app-screen": "0.82.1",
+    "axios": "^1.13.2",
+    "lucide-react-native": "^0.553.0",
     "react": "19.1.1",
     "react-native": "0.82.1",
-    "@react-native/new-app-screen": "0.82.1",
-    "react-native-safe-area-context": "^5.5.2"
+    "react-native-date-picker": "^5.0.13",
+    "react-native-linear-gradient": "^2.8.3",
+    "react-native-safe-area-context": "^5.5.2",
+    "react-native-svg": "^15.14.0",
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
