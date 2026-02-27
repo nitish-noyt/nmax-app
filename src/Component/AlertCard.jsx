@@ -15,6 +15,7 @@ const AlertCard = ({ alert, onDetailsPress, style }) => {
     message,
     time,
     priority = 'medium',
+    speed
   } = alert;
 
   const getPriorityColor = priority => {
@@ -66,12 +67,9 @@ const AlertCard = ({ alert, onDetailsPress, style }) => {
         <Text style={styles.alertMessage}>{message}</Text>
 
         <View style={styles.alertFooter}>
-          {/* <View style={styles.priorityBadge}>
-            <View
-              style={[styles.priorityDot, { backgroundColor: priorityColor }]}
-            />
-            <Text style={styles.priorityText}>{priority} priority</Text>
-          </View> */}
+          <View style={styles.priorityBadge}>
+            <Text style={styles.priorityText}> Speed:  {speed ?? 0}</Text>
+          </View>
 
           {/* <View style={styles.alertActions}>
             {onDetailsPress && (

@@ -32,10 +32,8 @@ import {
 const Homepage = () => {
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
-  const [todayAlerts, setTodayAlerts] = useState([]);
   const [openAlerts, setOpenAlerts] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('alerts'); // 'alerts' or 'openAlerts'
   const [socketStatus, setSocketStatus] = useState('disconnected'); // 'connected' or 'disconnected'
 
   // Format date to YYYY-MM-DD
@@ -87,54 +85,29 @@ const Homepage = () => {
     return message.includes('ALERT TRIGGERED') ? 'ALERT TRIGGERED' : message;
   };
 
-  // Transform API data to alert format for Alerts tab (orange)
-  const transformTodayAlertData = alertData => {
-    return alertData.map(alert => ({
-      id: alert._id,
-      title: getAlertTitle(alert.message),
-      message: extractAlertStatus(alert.message), // Only show "ALERT TRIGGERED"
-      time: formatTime(alert.timestamp),
-      acknowledged: false,
-      rawData: alert,
-      status: 'alert', 
-    }));
-  };
-
   // Transform API data to alert format for Open Alerts tab (red)
   const transformOpenAlertData = alertData => {
+    console.log("Alret data ", alertData)
+    console.log("Alret data ", alertData)
+    console.log("Alret data ", alertData)
+    console.log("Alret data ", alertData)
+    console.log("Alret data ", alertData)
+    console.log("Alret data ", alertData)
+    console.log("Alret data ", alertData)
+    console.log("Alret data ", alertData)
+    console.log("Alret data ", alertData[0].gps.speed)
     return alertData.map(alert => ({
       id: alert._id,
       title: getAlertTitle(alert.message),
-      message: extractAlertStatus(alert.message), // Only show "ALERT TRIGGERED"
+      // message: extractAlertStatus(alert.message),
+      message:"Open Alerts",
+       // Only show "ALERT TRIGGERED"
       time: formatTime(alert.timestamp),
       acknowledged: false,
       rawData: alert,
+      speed:alert.gps.speed,
       status: 'open', // Red color for open alerts
     }));
-  };
-
-  // ✅ Fetch alerts for Alerts tab (today's alerts) using getAllAlerts
-  const fetchTodaysAlerts = async () => {
-    try {
-      setLoading(true);
-      const todayString = formatDateToAPI(new Date());
-      console.log("Fetching today's alerts for date:", todayString);
-
-      const response = await getAllAlerts(todayString);
-      console.log("Today's Alerts API Response:", response);
-
-      if (response && response.success && Array.isArray(response.data)) {
-        const transformedAlerts = transformTodayAlertData(response.data);
-        setTodayAlerts(transformedAlerts);
-      } else {
-        setTodayAlerts([]);
-      }
-    } catch (error) {
-      console.log("Error fetching today's alerts:", error);
-      setTodayAlerts([]);
-    } finally {
-      setLoading(false);
-    }
   };
 
   // ✅ Fetch open alerts - use getDefaultOpenAlert for first time, getSelectedOpenAlert for date changes
@@ -172,13 +145,9 @@ const Homepage = () => {
   // Handle new alert from socket
   const handleNewAlert = useCallback((alertData) => {
     console.log('📢 New alert received via socket:', alertData);
-    // Refresh alerts based on current tab
-    if (activeTab === 'alerts') {
-      fetchTodaysAlerts();
-    } else {
-      fetchOpenAlerts(selectedDate || null);
-    }
-  }, [activeTab, selectedDate]);
+    // Refresh open alerts when new alert comes in
+    fetchOpenAlerts(selectedDate || null);
+  }, [selectedDate]);
 
   // Handle socket connection events
   const handleSocketConnect = useCallback(() => {
@@ -226,16 +195,12 @@ const Homepage = () => {
     };
   }, [handleSocketConnect, handleSocketDisconnect, handleSocketError, handleNewAlert]);
 
-  // Re-fetch data when tab changes or selectedDate changes
+  // Fetch open alerts when selectedDate changes
   useEffect(() => {
-    if (activeTab === 'alerts') {
-      fetchTodaysAlerts();
-    } else {
-      fetchOpenAlerts(selectedDate || null);
-    }
-  }, [activeTab, selectedDate]);
+    fetchOpenAlerts(selectedDate || null);
+  }, [selectedDate]);
 
-  // Handle details press for both tabs - Show full details only when user clicks
+  // Handle details press - Show full details only when user clicks
   const handleDetailsPress = alert => {
     console.log('Showing details for alert:', alert);
     console.log('Alert raw data:', alert.rawData);
@@ -250,20 +215,6 @@ const Homepage = () => {
       ).toLocaleString()}\nStatus: ${alert.status}`,
       [{ text: 'OK' }]
     );
-  };
-
-  // Handle tab change
-  const handleTabChange = tab => {
-    setActiveTab(tab);
-  };
-
-  // Get current tab data
-  const getCurrentTabData = () => {
-    if (activeTab === 'alerts') {
-      return todayAlerts;
-    } else {
-      return openAlerts;
-    }
   };
 
   // Call API for initial load
@@ -291,8 +242,6 @@ const Homepage = () => {
     console.log('🔄 Manual reconnection triggered');
     reconnectSocket();
   };
-
-  const currentData = getCurrentTabData();
 
   return (
     <SafeAreaProvider>
@@ -337,74 +286,32 @@ const Homepage = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Tab Bar */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'alerts' && styles.activeTab]}
-            onPress={() => handleTabChange('alerts')}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === 'alerts' && styles.activeTabText,
-              ]}
-            >
-              Alerts
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'openAlerts' && styles.activeTab]}
-            onPress={() => handleTabChange('openAlerts')}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === 'openAlerts' && styles.activeTabText,
-              ]}
-            >
-              Open Alerts
-            </Text>
-          </TouchableOpacity>
+        {/* Page Title - Open Alerts */}
+        <View style={styles.titleContainer}>
+          <Text style={styles.pageTitle}>Open Alerts</Text>
         </View>
 
-        {/* Date Display with Calendar Icon - Only show for Open Alerts tab */}
-        {activeTab === 'openAlerts' && (
-          <View style={styles.dateContainer}>
-            <TouchableOpacity
-              style={styles.dateSelector}
-              onPress={handleCalendarPress}
-            >
-              <Text style={styles.dateText}>
-                {selectedDate
-                  ? formatDateForDisplay(selectedDate)
-                  : 'Select Date'}
-              </Text>
-              <Calendar size={20} color="#667eea" />
-            </TouchableOpacity>
-
-            {currentData.length > 0 && (
-              <Text style={styles.alertCount}>
-                {currentData.length} open alert
-                {currentData.length !== 1 ? 's' : ''} found
-              </Text>
-            )}
-          </View>
-        )}
-
-        {/* Today's Date Display - Only show for Alerts tab */}
-        {activeTab === 'alerts' && (
-          <View style={styles.dateContainer}>
+        {/* Date Display with Calendar Icon */}
+        <View style={styles.dateContainer}>
+          <TouchableOpacity
+            style={styles.dateSelector}
+            onPress={handleCalendarPress}
+          >
             <Text style={styles.dateText}>
-              Today - {formatDateForDisplay(formatDateToAPI(new Date()))}
+              {selectedDate
+                ? formatDateForDisplay(selectedDate)
+                : 'Select Date'}
             </Text>
-            {currentData.length > 0 && (
-              <Text style={styles.alertCount}>
-                {currentData.length} alert{currentData.length !== 1 ? 's' : ''}{' '}
-                found
-              </Text>
-            )}
-          </View>
-        )}
+            <Calendar size={20} color="#667eea" />
+          </TouchableOpacity>
+
+          {openAlerts.length > 0 && (
+            <Text style={styles.alertCount}>
+              {openAlerts.length} open alert
+              {openAlerts.length !== 1 ? 's' : ''} found
+            </Text>
+          )}
+        </View>
 
         {/* Alert Cards Section */}
         <ScrollView
@@ -415,30 +322,27 @@ const Homepage = () => {
             <View style={styles.loadingContainer}>
               <Text style={styles.loadingText}>Loading alerts...</Text>
             </View>
-          ) : currentData.length > 0 ? (
-            currentData.map(alert => (
+          ) : openAlerts.length > 0 ? (
+            openAlerts.map(alert => (
               <AlertCard
                 key={alert.id}
                 alert={alert}
                 onDetailsPress={handleDetailsPress}
                 status={alert.status}
+                speed={alert.speed}
               />
             ))
           ) : (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>
-                {activeTab === 'alerts'
-                  ? 'No alerts for today'
-                  : `No open alerts ${
-                      selectedDate
-                        ? `for ${formatDateForDisplay(selectedDate)}`
-                        : 'found'
-                    }`}
+                {selectedDate
+                  ? `No open alerts for ${formatDateForDisplay(selectedDate)}`
+                  : 'No open alerts found'}
               </Text>
               <Text style={styles.emptySubText}>
-                {activeTab === 'alerts'
-                  ? 'There are no alerts for today.'
-                  : 'Select another date to view open alerts.'}
+                {selectedDate
+                  ? 'Select another date to view open alerts.'
+                  : 'Select a date to view open alerts.'}
               </Text>
             </View>
           )}
@@ -529,30 +433,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-  // Tab Bar Styles
-  tabContainer: {
-    flexDirection: 'row',
+  // Title Styles
+  titleContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     backgroundColor: '#f8f9fa',
     borderBottomWidth: 1,
     borderBottomColor: '#e9ecef',
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 16,
     alignItems: 'center',
-    justifyContent: 'center',
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent',
   },
-  activeTab: {
-    borderBottomColor: '#667eea',
-  },
-  tabText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#666',
-  },
-  activeTabText: {
+  pageTitle: {
+    fontSize: 24,
+    fontWeight: '700',
     color: '#667eea',
   },
   dateContainer: {
