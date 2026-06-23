@@ -9,10 +9,11 @@ import {
   Alert,
   Linking,
   Platform,
+  TextInput,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import DatePicker from 'react-native-date-picker';
-import { Calendar, MapPin, Gauge, Navigation } from 'lucide-react-native';
+import { Calendar, MapPin, Gauge, Navigation, Search, X, Truck, Clock, AlertTriangle } from 'lucide-react-native';
 
 import logo from '../assets/images/nmax-logo.png';
 import { getDefaultOpenAlert, getSelectedOpenAlert } from '../api/APIFunction';
@@ -31,7 +32,8 @@ const Homepage = () => {
   const [openAlerts, setOpenAlerts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [socketStatus, setSocketStatus] = useState('disconnected');
-  const [activeTab, setActiveTab] = useState('openAlerts'); // 'openAlerts' or 'location'
+  const [vrnSearch, setVrnSearch] = useState('');
+  const [appliedVrn, setAppliedVrn] = useState('');
 
   /* ---------------- Date Helpers ---------------- */
 
@@ -68,6 +70,9 @@ const Homepage = () => {
     return alertData.map(alert => ({
       id: alert._id,
       message: alert.message,
+      vrn: alert.vrn,
+      movableLabel: alert.movableLabel,
+      fixedLabel: alert.fixedLabel,
       time: formatTime(alert.timestamp),
       speed: alert?.gps?.speed ?? 0,
       lat: alert?.gps?.lat,
@@ -77,15 +82,15 @@ const Homepage = () => {
     }));
   };
 
-  const fetchOpenAlerts = async (dateString = null) => {
+  const fetchOpenAlerts = async (dateString = null, vrn = null) => {
     try {
       setLoading(true);
       let response;
 
       if (dateString) {
-        response = await getSelectedOpenAlert(dateString);
+        response = await getSelectedOpenAlert(dateString, vrn);
       } else {
-        response = await getDefaultOpenAlert();
+        response = await getDefaultOpenAlert(vrn);
       }
 
       if (response?.success && Array.isArray(response.data)) {
@@ -104,10 +109,8 @@ const Homepage = () => {
   /* ---------------- Socket ---------------- */
 
   const handleNewAlert = useCallback(() => {
-    if (activeTab === 'openAlerts') {
-      fetchOpenAlerts(selectedDate || null);
-    }
-  }, [selectedDate, activeTab]);
+    fetchOpenAlerts(selectedDate || null, appliedVrn || null);
+  }, [selectedDate, appliedVrn]);
 
   useEffect(() => {
     const callbacks = {
@@ -134,10 +137,10 @@ const Homepage = () => {
   }, []);
 
   useEffect(() => {
-    if (selectedDate && activeTab === 'openAlerts') {
-      fetchOpenAlerts(selectedDate);
+    if (selectedDate) {
+      fetchOpenAlerts(selectedDate, appliedVrn || null);
     }
-  }, [selectedDate, activeTab]);
+  }, [selectedDate, appliedVrn]);
 
   /* ---------------- Handlers ---------------- */
 
@@ -145,6 +148,15 @@ const Homepage = () => {
     const dateString = formatDateToAPI(date);
     setSelectedDate(dateString);
     setDatePickerVisible(false);
+  };
+
+  const handleVrnSearch = () => {
+    setAppliedVrn(vrnSearch.trim());
+  };
+
+  const handleClearVrn = () => {
+    setVrnSearch('');
+    setAppliedVrn('');
   };
 
   const handleDetailsPress = alert => {
@@ -200,131 +212,82 @@ Address: ${alert.address}`,
           style={styles.dateRow}
           onPress={() => setDatePickerVisible(true)}
         >
+          <Calendar size={16} color="#2563eb" />
           <Text style={styles.dateText}>
             {selectedDate ? formatDateForDisplay(selectedDate) : 'Select Date'}
           </Text>
-          <Calendar size={18} color="#2563eb" />
         </TouchableOpacity>
+      </View>
 
-        <Text style={styles.alertCount}>
-          {openAlerts.length} open alert{openAlerts.length !== 1 ? 's' : ''}{' '}
-          found
-        </Text>
+      {/* STATS */}
+      <View style={styles.statsRow}>
+        <View style={styles.statCard}>
+          <View style={[styles.statIconBox, styles.statIconOrange]}>
+            <AlertTriangle size={16} color="#ea580c" />
+          </View>
+          <View>
+            <Text style={styles.statLabel}>Open Alerts</Text>
+            <Text style={styles.statValue}>{openAlerts.length}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* VRN SEARCH */}
+      <View style={styles.searchCard}>
+        <View style={styles.searchInputWrapper}>
+          <Search size={18} color="#94a3b8" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search VRN, labels, gateway..."
+            placeholderTextColor="#94a3b8"
+            value={vrnSearch}
+            onChangeText={setVrnSearch}
+            autoCapitalize="characters"
+            returnKeyType="search"
+            onSubmitEditing={handleVrnSearch}
+          />
+          {vrnSearch.length > 0 && (
+            <TouchableOpacity onPress={handleClearVrn} style={styles.clearButton}>
+              <X size={16} color="#94a3b8" />
+            </TouchableOpacity>
+          )}
+        </View>
+        <TouchableOpacity style={styles.searchButton} onPress={handleVrnSearch}>
+          <Text style={styles.searchButtonText}>Search</Text>
+        </TouchableOpacity>
+        {appliedVrn ? (
+          <View style={styles.appliedVrnRow}>
+            <View style={styles.vrnChip}>
+              <Truck size={12} color="#2563eb" />
+              <Text style={styles.vrnChipText}>{appliedVrn}</Text>
+            </View>
+            <TouchableOpacity onPress={handleClearVrn}>
+              <Text style={styles.showAllText}>Show all vehicles</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
 
       {/* ALERT LIST */}
       {loading ? (
-        <Text style={{ textAlign: 'center', marginTop: 20 }}>
-          Loading alerts...
-        </Text>
+        <Text style={styles.emptyText}>Loading alerts...</Text>
       ) : openAlerts.length > 0 ? (
-        openAlerts.map(alert => (
+        openAlerts.map((alert, index) => (
           <AlertCard
             key={alert.id}
             alert={alert}
+            index={index}
             onPress={handleDetailsPress}
             onGoToMap={handleGoToMap}
           />
         ))
       ) : (
-        <Text style={{ textAlign: 'center', color: '#888', marginTop: 20 }}>
-          No open alerts found
+        <Text style={styles.emptyText}>
+          No open alerts found{appliedVrn ? ` for VRN ${appliedVrn}` : ''}
         </Text>
       )}
     </>
   );
-
-  /* ========================================================= */
-  /* ================= LOCATION CARD COMPONENT =============== */
-  /* ========================================================= */
-
-  const LocationCard = ({ location, onOpenMap , data }) => {
-    return (
-      <View style={styles.cardWrapper}>
-        <View style={styles.locationLeftBorder} />
-
-        <View style={styles.card}>
-          {/* TIME */}
-          <View style={styles.locationHeader}>
-            <Navigation size={16} color="#2563eb" />
-            <Text style={styles.locationTime}>{location.time}</Text>
-          </View>
-
-          {/* LAT / LNG */}
-          <View style={styles.latLngRow}>
-            <View style={styles.latLngItem}>
-              <Text style={styles.latLngLabel}>LATITUDE</Text>
-              <Text style={styles.latLngValue}>{data.rawData.gps.lat}</Text>
-            </View>
-
-            <View style={styles.latLngItem}>
-              <Text style={styles.latLngLabel}>LONGITUDE</Text>
-              <Text style={styles.latLngValue}>{data.rawData.gps.long}</Text>
-            </View>
-          </View>
-
-          {/* SPEED */}
-          <View style={styles.speedRow}>
-            <Text style={styles.latLngLabel}>SPEED</Text>
-            <Text style={styles.speedValue}>{location.speed} km/h</Text>
-          </View>
-
-          {/* ADDRESS */}
-          <View style={styles.addressRow}>
-            <MapPin size={16} color="#2563eb" />
-            <Text style={styles.addressText}>{location.address}</Text>
-          </View>
-
-          {/* BUTTON */}
-          <TouchableOpacity
-            style={styles.openMapButton}
-            onPress={() => onOpenMap(location)}
-          >
-            <Navigation size={16} color="#fff" />
-            <Text style={styles.openMapText}>Open in Maps</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
-
-  const renderLocation = () => {
-    if (loading) {
-      return (
-        <Text style={{ textAlign: 'center', marginTop: 20 }}>
-          Loading location...
-        </Text>
-      );
-    }
-
-    if (openAlerts.length === 0) {
-      return (
-        <Text style={{ textAlign: 'center', color: '#888', marginTop: 20 }}>
-          No location data found
-        </Text>
-      );
-    }
-
-    return (
-      <>
-        {/* DATE SAME AS SCREENSHOT */}
-        <View style={styles.dateSection}>
-          <Text style={styles.dateText}>
-            {selectedDate ? formatDateForDisplay(selectedDate) : 'Select Date'}
-          </Text>
-        </View>
-
-        {openAlerts.map(location => (
-          <LocationCard
-            key={location.id}
-            location={location}
-            onOpenMap={handleGoToMap}
-            data={location}
-          />
-        ))}
-      </>
-    );
-  };
 
   return (
     <SafeAreaProvider>
@@ -348,39 +311,16 @@ Address: ${alert.address}`,
             ]}
             onPress={reconnectSocket}
           >
+            {socketStatus === 'connected' && <View style={styles.liveDot} />}
             <Text style={styles.socketText}>
               {socketStatus === 'connected' ? 'Connected' : 'Disconnected'}
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* TABS - Only Open Alerts and Location */}
-        <View style={styles.tabs}>
-          <TouchableOpacity onPress={() => setActiveTab('openAlerts')}>
-            <Text
-              style={
-                activeTab === 'openAlerts'
-                  ? styles.activeTab
-                  : styles.inactiveTab
-              }
-            >
-              Open Alerts
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setActiveTab('location')}>
-            <Text
-              style={
-                activeTab === 'location' ? styles.activeTab : styles.inactiveTab
-              }
-            >
-              Location
-            </Text>
-          </TouchableOpacity>
-        </View>
-
         {/* CONTENT */}
-        <ScrollView contentContainerStyle={{ padding: 16 }}>
-          {activeTab === 'openAlerts' ? renderOpenAlerts() : renderLocation()}
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {renderOpenAlerts()}
         </ScrollView>
 
         {/* DATE PICKER */}
@@ -402,365 +342,491 @@ Address: ${alert.address}`,
 /* ================= ALERT CARD COMPONENT ================== */
 /* ========================================================= */
 
-const AlertCard = ({ alert, onPress, onGoToMap }) => {
+const AlertCard = ({ alert, index, onPress, onGoToMap }) => {
+  const labelText = [alert.movableLabel, alert.fixedLabel]
+    .filter(Boolean)
+    .join(' / ');
+
   return (
     <View style={styles.cardWrapper}>
-      <View style={styles.leftBorder} />
-
       <View style={styles.card}>
+        {/* Header — matches web fleet card */}
         <View style={styles.cardHeader}>
-          <View style={styles.alertRow}>
-            <View style={styles.orangeDot} />
-            <Text style={styles.alertTitle}>Alert:</Text>
+          <View style={styles.cardHeaderLeft}>
+            <View style={styles.truckIconBox}>
+              <Truck size={20} color="#fff" />
+            </View>
+            <View style={styles.cardHeaderInfo}>
+              <View style={styles.cardHeaderTopRow}>
+                {alert.vrn ? (
+                  <View style={styles.vrnPill}>
+                    <Truck size={11} color="#2563eb" />
+                    <Text style={styles.vrnPillText}>{alert.vrn}</Text>
+                  </View>
+                ) : null}
+                <Text style={styles.cardIndex}>#{index + 1}</Text>
+              </View>
+              {labelText ? (
+                <Text style={styles.labelSubtitle}>{labelText}</Text>
+              ) : null}
+            </View>
           </View>
-          <Text style={styles.timeText}>{alert.time}</Text>
+          <View style={styles.cardHeaderRight}>
+            <View style={styles.openAlertPill}>
+              <Text style={styles.openAlertPillText}>Open Alert</Text>
+            </View>
+            <View style={styles.timeBadge}>
+              <Clock size={11} color="#64748b" />
+              <Text style={styles.timeText}>{alert.time}</Text>
+            </View>
+          </View>
         </View>
 
-        <Text style={styles.message}>OpenAlert</Text>
+        <View style={styles.cardDivider} />
 
-        <View style={styles.infoRow}>
-          <View style={[styles.infoItem, styles.speedItem]}>
-            <View style={styles.iconLabelContainer}>
-              <View style={styles.iconBackground}>
-                <Gauge size={14} color="#2563eb" />
-              </View>
-              <Text style={styles.infoLabel}>Speed</Text>
+        {/* Speed & Coordinates — web-style split panels */}
+        <View style={styles.panelRow}>
+          <View style={styles.panel}>
+            <View style={styles.panelHeader}>
+              <Gauge size={14} color="#ea580c" />
+              <Text style={styles.panelTitle}>Speed</Text>
             </View>
-            <Text style={styles.infoValue}>{alert.speed} km/h</Text>
+            <Text style={styles.panelValue}>{alert.speed} km/h</Text>
           </View>
 
-          <View style={[styles.infoItem, styles.locationItem]}>
-            <View style={styles.iconLabelContainer}>
-              <View style={styles.iconBackground}>
-                <MapPin size={14} color="#2563eb" />
-              </View>
-              <Text style={styles.infoLabel}>Location</Text>
+          <View style={styles.panel}>
+            <View style={styles.panelHeader}>
+              <MapPin size={14} color="#2563eb" />
+              <Text style={styles.panelTitle}>Coordinates</Text>
             </View>
-            <Text style={styles.infoValue}>
-              {alert.lat?.toFixed(4) || '22.5529'},{' '}
-              {alert.lng?.toFixed(4) || '72.9729'}
+            <Text style={styles.panelValue} numberOfLines={1}>
+              {alert.lat?.toFixed(4) || '22.5529'}, {alert.lng?.toFixed(4) || '72.9729'}
             </Text>
           </View>
         </View>
 
-        <View style={styles.addressContainer}>
-          <Navigation size={16} color="#2563eb" style={styles.addressIcon} />
+        {/* Address */}
+        <View style={styles.addressPanel}>
+          <View style={styles.panelHeader}>
+            <Navigation size={14} color="#2563eb" />
+            <Text style={styles.panelTitle}>Location</Text>
+          </View>
           <Text style={styles.addressText}>{alert.address}</Text>
         </View>
 
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={styles.mapButton}
-            onPress={() => onGoToMap(alert)}
-          >
-            <MapPin color={'white'} size={18} />
-            <Text style={styles.mapButtonText}>Go to Map</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Map Button */}
+        <TouchableOpacity
+          style={styles.mapButton}
+          onPress={() => onGoToMap(alert)}
+          activeOpacity={0.85}
+        >
+          <MapPin color="#fff" size={16} />
+          <Text style={styles.mapButtonText}>Go to Map</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: '#f1f5f9' },
+
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 24,
+  },
 
   header: {
     alignItems: 'center',
-    paddingVertical: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     position: 'relative',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
   },
 
-  logo: { width: 80, height: 80 },
+  logo: { width: 64, height: 64 },
 
   companyText: {
-    fontSize: 12,
-    color: '#555',
+    fontSize: 11,
+    color: '#64748b',
   },
 
   title: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
-    marginTop: 4,
+    marginTop: 2,
+    color: '#0f172a',
   },
 
   socketBadge: {
     position: 'absolute',
-    right: 20,
-    top: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-
-  connected: { backgroundColor: '#16a34a' },
-  disconnected: { backgroundColor: '#ef4444' },
-
-  socketText: { color: '#fff', fontWeight: '600', fontSize: 12 },
-
-  tabs: {
+    right: 16,
+    top: 16,
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    borderBottomWidth: 1,
-    borderColor: '#eee',
-    paddingBottom: 8,
-    paddingHorizontal: 20,
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
   },
 
-  activeTab: {
-    fontWeight: '700',
-    color: '#2563eb',
-    borderBottomWidth: 2,
-    borderColor: '#2563eb',
-    paddingBottom: 4,
-    fontSize: 16,
+  connected: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#bbf7d0',
   },
 
-  inactiveTab: {
-    color: '#888',
-    fontSize: 16,
+  disconnected: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#22c55e',
+  },
+
+  socketText: {
+    fontWeight: '600',
+    fontSize: 11,
+    color: '#334155',
   },
 
   dateSection: {
-    alignItems: 'center',
-    paddingVertical: 16,
-    // backgroundColor:"red"
+    marginBottom: 12,
   },
 
   dateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    backgroundColor: '#fff',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    alignSelf: 'flex-start',
   },
 
   dateText: {
     fontWeight: '600',
     color: '#2563eb',
+    fontSize: 13,
   },
 
-  alertCount: {
-    marginTop: 4,
-    color: '#666',
+  statsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+
+  statCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+
+  statIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  statIconOrange: {
+    backgroundColor: '#fff7ed',
+  },
+
+  statLabel: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+
+  searchCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+    marginBottom: 16,
+    gap: 10,
+  },
+
+  searchInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+
+  searchInput: {
+    flex: 1,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0f172a',
+  },
+
+  clearButton: {
+    padding: 4,
+  },
+
+  searchButton: {
+    backgroundColor: '#2563eb',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+
+  searchButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+
+  appliedVrnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  vrnChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+
+  vrnChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2563eb',
+  },
+
+  showAllText: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+
+  emptyText: {
+    textAlign: 'center',
+    color: '#94a3b8',
+    marginTop: 24,
+    fontSize: 14,
   },
 
   cardWrapper: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-
-  leftBorder: {
-    width: 4,
-    backgroundColor: '#f97316',
-    borderTopLeftRadius: 10,
-    borderBottomLeftRadius: 10,
+    marginBottom: 12,
   },
 
   card: {
-    flex: 1,
     backgroundColor: '#fff',
-    padding: 16,
     borderRadius: 12,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
     shadowRadius: 4,
+    elevation: 2,
   },
 
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-  },
-
-  alertRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  orangeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#f97316',
-    marginRight: 6,
-  },
-
-  alertTitle: {
-    fontWeight: '600',
-    color: '#f97316',
-  },
-
-  timeText: { fontSize: 12, color: '#666' },
-
-  message: { marginVertical: 10, color: '#333' },
-
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    alignItems: 'flex-start',
     gap: 8,
   },
 
-  infoItem: {
+  cardHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
     flex: 1,
-    backgroundColor: '#f5f5f5',
-    padding: 10,
-    borderRadius: 8,
   },
 
-  speedItem: {
-    backgroundColor: '#3d3f4b0e',
+  truckIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
-  locationItem: {
-    backgroundColor: '#3d3f4b0e',
+  cardHeaderInfo: {
+    flex: 1,
+    gap: 3,
   },
 
-  iconLabelContainer: {
+  cardHeaderTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
+    gap: 8,
+    flexWrap: 'wrap',
   },
 
-  iconBackground: {
-    backgroundColor: '#bae7ff27',
-    padding: 4,
+  vrnPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 6,
   },
 
-  infoLabel: {
+  vrnPillText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2563eb',
+  },
+
+  cardIndex: {
     fontSize: 12,
-    color: '#444',
+    color: '#94a3b8',
     fontWeight: '500',
   },
 
-  infoValue: {
-    fontWeight: '600',
-    fontSize: 14,
-    color: '#333',
-    marginLeft: 28,
+  labelSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
   },
 
-  addressContainer: {
+  cardHeaderRight: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+
+  openAlertPill: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+
+  openAlertPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#ea580c',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+
+  timeBadge: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#adbfe83f',
-    borderLeftWidth: 3,
-    borderRadius: 10,
-    borderColor: '#2563eb',
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    marginBottom: 12,
-    gap: 8,
+    alignItems: 'center',
+    gap: 4,
   },
 
-  addressIcon: {
-    marginTop: 2,
+  timeText: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+
+  cardDivider: {
+    height: 1,
+    backgroundColor: '#f1f5f9',
+    marginVertical: 12,
+  },
+
+  panelRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+
+  panel: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+    gap: 6,
+  },
+
+  panelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+
+  panelTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+
+  panelValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+
+  addressPanel: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+    marginBottom: 12,
+    gap: 6,
   },
 
   addressText: {
-    fontSize: 12,
-    color: '#444',
-    flex: 1,
+    fontSize: 13,
+    color: '#475569',
     fontWeight: '500',
-  },
-
-  buttonContainer: {
-    alignItems: 'flex-end',
+    lineHeight: 18,
   },
 
   mapButton: {
     backgroundColor: '#2563eb',
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
-    width: 120,
     flexDirection: 'row',
     gap: 8,
-    paddingHorizontal: 12,
     justifyContent: 'center',
   },
 
   mapButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  /* LOCATION CARD STYLES */
-
-  locationLeftBorder: {
-    width: 4,
-    backgroundColor: '#2563eb',
-    borderTopLeftRadius: 10,
-    borderBottomLeftRadius: 10,
-  },
-
-  locationHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 12,
-  },
-
-  locationTime: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-  },
-
-  latLngRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-
-  latLngItem: {
-    flex: 1,
-  },
-
-  latLngLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
-    fontWeight: '500',
-  },
-
-  latLngValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111',
-  },
-
-  speedRow: {
-    marginBottom: 12,
-  },
-
-  speedValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111',
-    marginTop: 4,
-  },
-
-  addressRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    marginBottom: 16,
-  },
-
-  openMapButton: {
-    backgroundColor: '#2563eb',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-  },
-
-  openMapText: {
     color: '#fff',
     fontWeight: '600',
     fontSize: 14,

@@ -1,7 +1,8 @@
 // api/APIFunction.js
 import axios from 'axios';
 
-const BASE_URL = 'https://noytindia.com:4443';
+// https://nmax.noytindia.com/api/v1/nmax/open-alerts/all
+const BASE_URL = 'https://nmax.noytindia.com/api/v1/nmax';
 
 const API = axios.create({
   baseURL: BASE_URL,
@@ -33,9 +34,13 @@ export const getAllAlerts = async (date) => {
   }
 };
 
-export const getDefaultOpenAlert = async () => {
+export const getDefaultOpenAlert = async (vrn) => {
   try {
-    const response = await API.get('/open-alerts/all');
+    const params = {};
+    if (vrn?.trim()) {
+      params.vrn = vrn.trim();
+    }
+    const response = await API.get('/open-alerts/all', { params });
     console.log('Default Open-alert response =====>', response);
     return response.data;
   } catch (error) {
@@ -44,9 +49,14 @@ export const getDefaultOpenAlert = async () => {
   }
 };
 
-export const getSelectedOpenAlert = async (date) => {
+export const getSelectedOpenAlert = async (date, vrn) => {
+  console.log('/open-alerts/all', { date, vrn });
   try {
-    const response = await API.get(`/open-alerts/all?date=${date}`);
+    const params = { date };
+    if (vrn?.trim()) {
+      params.vrn = vrn.trim();
+    }
+    const response = await API.get('/open-alerts/all', { params });
     console.log('Selected open alert ===>', response);
     return response.data;
   } catch (error) {

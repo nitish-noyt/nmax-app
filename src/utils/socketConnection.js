@@ -1,10 +1,11 @@
 import io from "socket.io-client";
+// https://nmax.noytindia.com/api/v1/nmax/open-alerts/all
 
-const SOCKET_URL = "https://noytindia.com:4443"
+const SOCKET_URL = "https://nmax.noytindia.com"
 // Create socket instance with better configuration
 const socket = io(SOCKET_URL, {
-  transports: ["websocket", "polling"], // Fallback to polling if websocket fails
-  autoConnect: false, // prevent auto connect on import
+  transports: ["websocket", "polling"],
+  autoConnect: false, 
   reconnection: true,
   reconnectionAttempts: 5,
   reconnectionDelay: 1000,
