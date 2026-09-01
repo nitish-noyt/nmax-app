@@ -1,108 +1,145 @@
-import io from "socket.io-client";
-// https://nmax.noytindia.com/api/v1/nmax/open-alerts/all
+import io from 'socket.io-client';
+import { PROD } from '../config/appConfig';
 
-const SOCKET_URL = "https://nmax.noytindia.com"
-// Create socket instance with better configuration
-const socket = io(SOCKET_URL, {
-  transports: ["websocket", "polling"],
-  autoConnect: false, 
-  reconnection: true,
-  reconnectionAttempts: 5,
-  reconnectionDelay: 1000,
-});
-
-// Track connection status
-let isConnected = false;
-
-// ✅ Function to check socket connection status
-export const isSocketConnected = () => {
-  return socket.connected && isConnected;
+export const SOCKET_EVENTS = {
+  PACKET: 'packet',
+  ALERT: 'alert',
+  OPEN_ALERT: 'open_alert',
+  COMPARISON_LOG: 'comparison_log',
 };
 
-// ✅ Function to connect socket if not connected
+const SOCKET_URL = PROD.socketUrl;
+
+const socket = io(SOCKET_URL, {
+  transports: ['websocket', 'polling'],
+  autoConnect: false,
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1500,
+  reconnectionDelayMax: 10000,
+  timeout: 20000,
+  forceNew: false,
+});
+
+let isConnected = false;
+let activeCallbacks = {};
+
+export const isSocketConnected = () => socket.connected && isConnected;
+
 export const connectSocket = () => {
   if (!socket.connected) {
     socket.connect();
-    console.log("🔄 Connecting socket...");
+    console.log('🔄 Connecting socket...');
   }
   return socket;
 };
 
-// ✅ Function to disconnect socket
 export const disconnectSocket = () => {
   if (socket.connected) {
     socket.disconnect();
     isConnected = false;
-    console.log("❌ Socket disconnected manually");
+    console.log('❌ Socket disconnected manually');
   }
 };
 
-// ✅ Function to get socket instance (for emit/listen)
 export const getSocket = () => socket;
 
-// ✅ Function to setup socket event listeners with callbacks
-export const setupSocketListeners = (callbacks = {}) => {
-  const {
-    onConnect,
-    onDisconnect,
-    onAlert,
-    onConnectError,
-    onReconnectAttempt
-  } = callbacks;
-
-  // Remove all existing listeners first to avoid duplicates
+function bindCoreHandlers() {
   socket.off('connect');
   socket.off('disconnect');
-  socket.off('newAlert');
-  socket.off('alertUpdate');
   socket.off('connect_error');
-  socket.off('reconnect_attempt');
+  socket.io.off('reconnect');
+  socket.io.off('reconnect_attempt');
 
-  // Setup connection events
   socket.on('connect', () => {
     console.log('✅ Socket connected:', socket.id);
     isConnected = true;
-    onConnect && onConnect();
+    activeCallbacks.onConnect?.();
   });
 
-  socket.on('disconnect', (reason) => {
+  socket.on('disconnect', reason => {
     console.log('❌ Socket disconnected:', reason);
     isConnected = false;
-    onDisconnect && onDisconnect(reason);
+    activeCallbacks.onDisconnect?.(reason);
   });
 
-  socket.on('connect_error', (error) => {
-    console.log('❌ Socket connection error:', error);
+  socket.on('connect_error', error => {
+    console.log('❌ Socket connection error:', error?.message || error);
     isConnected = false;
-    onConnectError && onConnectError(error);
+    activeCallbacks.onConnectError?.(error);
   });
 
-  socket.on('reconnect_attempt', (attemptNumber) => {
+  // Manager-level reconnect (socket.io v4) — re-hydrate after a real reconnect
+  socket.io.on('reconnect_attempt', attemptNumber => {
     console.log(`🔄 Socket reconnection attempt: ${attemptNumber}`);
-    onReconnectAttempt && onReconnectAttempt(attemptNumber);
+    activeCallbacks.onReconnectAttempt?.(attemptNumber);
   });
 
-  // Setup alert events
-  if (onAlert) {
-    socket.on('newAlert', onAlert);
-    socket.on('alertUpdate', onAlert);
-  }
-};
+  socket.io.on('reconnect', attemptNumber => {
+    console.log(`✅ Socket reconnected after ${attemptNumber} attempt(s)`);
+    isConnected = true;
+    activeCallbacks.onConnect?.();
+    activeCallbacks.onReconnectSync?.();
+  });
+}
 
-// ✅ Function to cleanup socket listeners
-export const cleanupSocketListeners = () => {
-  socket.off('connect');
-  socket.off('disconnect');
+function bindDomainHandlers() {
+  socket.off(SOCKET_EVENTS.PACKET);
+  socket.off(SOCKET_EVENTS.ALERT);
+  socket.off(SOCKET_EVENTS.OPEN_ALERT);
+  socket.off(SOCKET_EVENTS.COMPARISON_LOG);
   socket.off('newAlert');
   socket.off('alertUpdate');
-  socket.off('connect_error');
-  socket.off('reconnect_attempt');
+
+  if (activeCallbacks.onOpenAlert) {
+    socket.on(SOCKET_EVENTS.OPEN_ALERT, activeCallbacks.onOpenAlert);
+  }
+  if (activeCallbacks.onAlert) {
+    socket.on(SOCKET_EVENTS.ALERT, activeCallbacks.onAlert);
+  }
+  if (activeCallbacks.onPacket) {
+    socket.on(SOCKET_EVENTS.PACKET, activeCallbacks.onPacket);
+  }
+  if (activeCallbacks.onComparisonLog) {
+    socket.on(SOCKET_EVENTS.COMPARISON_LOG, activeCallbacks.onComparisonLog);
+  }
+}
+
+/**
+ * Register live event handlers. Safe to call repeatedly — replaces prior handlers.
+ * Pass onReconnectSync to re-hydrate from API after connect/reconnect.
+ */
+export const setupSocketListeners = (callbacks = {}) => {
+  activeCallbacks = callbacks || {};
+  bindCoreHandlers();
+  bindDomainHandlers();
 };
 
-// ✅ Function to manually reconnect
-export const reconnectSocket = () => {
+export const cleanupSocketListeners = () => {
+  activeCallbacks = {};
+  socket.off('connect');
+  socket.off('disconnect');
+  socket.off('connect_error');
+  socket.io.off('reconnect');
+  socket.io.off('reconnect_attempt');
+  socket.off(SOCKET_EVENTS.PACKET);
+  socket.off(SOCKET_EVENTS.ALERT);
+  socket.off(SOCKET_EVENTS.OPEN_ALERT);
+  socket.off(SOCKET_EVENTS.COMPARISON_LOG);
+  socket.off('newAlert');
+  socket.off('alertUpdate');
+};
+
+/** Ensure socket is connected; force cycle if already connected but stale. */
+export const ensureSocketConnected = ({ force = false } = {}) => {
+  if (force && socket.connected) {
+    socket.disconnect();
+  }
   if (!socket.connected) {
     socket.connect();
-    console.log("🔄 Manual socket reconnection initiated...");
+    console.log(force ? '🔄 Forced socket reconnect...' : '🔄 Ensuring socket connect...');
   }
+  return socket;
 };
+
+export const reconnectSocket = () => ensureSocketConnected({ force: true });

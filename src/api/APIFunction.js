@@ -1,66 +1,71 @@
 // api/APIFunction.js
 import axios from 'axios';
-
-// https://nmax.noytindia.com/api/v1/nmax/open-alerts/all
-const BASE_URL = 'https://nmax.noytindia.com/api/v1/nmax';
+import { PROD } from '../config/appConfig';
 
 const API = axios.create({
-  baseURL: BASE_URL,
-  timeout: 10000,
+  baseURL: PROD.apiBaseUrl,
+  timeout: 20000,
 });
 
-export const getAllAlerts = async (date) => {
-  console.log('Date from api file ====>', date);
-
-  try {
-    const response = await API.get('/alerts/all', {
-      params: { date },
-    });
-    console.log('Response from GET API ====>', response.data);
-    return response.data;
-  } catch (error) {
-    if (error.response) {
-      console.error(
-        'Error response:',
-        error.response.status,
-        error.response.data,
-      );
-    } else if (error.request) {
-      console.error('No response received:', error.request);
-    } else {
-      console.error('Request setup error:', error.message);
-    }
-    throw error;
+function buildParams({ date, vrn, role, limit, openAlertOnly } = {}) {
+  const params = {};
+  if (date) params.date = date;
+  if (vrn?.trim()) params.vrn = vrn.trim();
+  if (role) params.role = role;
+  if (limit != null) params.limit = limit;
+  if (openAlertOnly === true || openAlertOnly === 'true') {
+    params.openAlertOnly = true;
   }
+  return params;
+}
+
+async function getData(path, params) {
+  const response = await API.get(path, { params });
+  return response.data;
+}
+
+/** Security alerts */
+export const getAlerts = async (date, vrn, limit) => {
+  return getData('/alerts/all', buildParams({ date, vrn, limit }));
 };
 
-export const getDefaultOpenAlert = async (vrn) => {
-  try {
-    const params = {};
-    if (vrn?.trim()) {
-      params.vrn = vrn.trim();
-    }
-    const response = await API.get('/open-alerts/all', { params });
-    console.log('Default Open-alert response =====>', response);
-    return response.data;
-  } catch (error) {
-    console.log('error from default open alert===>', error);
-    throw error;
-  }
+/** @deprecated use getAlerts */
+export const getAllAlerts = async date => getAlerts(date);
+
+/** Open alerts — date optional */
+export const getOpenAlerts = async (date, vrn, limit) => {
+  return getData('/open-alerts/all', buildParams({ date, vrn, limit }));
 };
 
-export const getSelectedOpenAlert = async (date, vrn) => {
-  console.log('/open-alerts/all', { date, vrn });
-  try {
-    const params = { date };
-    if (vrn?.trim()) {
-      params.vrn = vrn.trim();
-    }
-    const response = await API.get('/open-alerts/all', { params });
-    console.log('Selected open alert ===>', response);
-    return response.data;
-  } catch (error) {
-    console.log('Error from selected open response', error);
-    throw error;
-  }
+export const getDefaultOpenAlert = async vrn => getOpenAlerts(undefined, vrn);
+
+export const getSelectedOpenAlert = async (date, vrn) =>
+  getOpenAlerts(date, vrn);
+
+/** Comparison logs — open-alert history for admin UI */
+export const getComparisonLogs = async (
+  date,
+  vrn,
+  limit = 150,
+  openAlertOnly = true,
+) => {
+  return getData(
+    '/comparison-logs',
+    buildParams({ date, vrn, limit, openAlertOnly }),
+  );
+};
+
+/** Latest packets (supports IST date filter) */
+export const getLatestPackets = async (vrn, role, limit = 100, date) => {
+  return getData('/packets/latest', buildParams({ vrn, role, limit, date }));
+};
+
+/** Canonical monitor summary counts for selected IST date */
+export const getMonitorSummary = async (date, vrn) => {
+  return getData('/monitor/summary', buildParams({ date, vrn }));
+};
+
+/** Live sensor health per vehicle (10-minute fault threshold) */
+export const getSensorStatus = async (vrn) => {
+  return getData('/monitor/sensor-status', buildParams({ vrn }));
 };

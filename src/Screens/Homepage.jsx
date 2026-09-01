@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Image,
   StyleSheet,
@@ -13,293 +13,269 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import DatePicker from 'react-native-date-picker';
-import { Calendar, MapPin, Gauge, Navigation, Search, X, Truck, Clock, AlertTriangle } from 'lucide-react-native';
+import {
+  Calendar,
+  MapPin,
+  Gauge,
+  Navigation,
+  Search,
+  X,
+  Truck,
+  Clock,
+  AlertTriangle,
+  Radio,
+  ShieldAlert,
+  GitCompare,
+  Activity,
+  Zap,
+} from 'lucide-react-native';
 
 import logo from '../assets/images/nmax-logo.png';
-import { getDefaultOpenAlert, getSelectedOpenAlert } from '../api/APIFunction';
-
+import StatusSection from '../Component/StatusSection';
 import {
-  connectSocket,
-  isSocketConnected,
-  setupSocketListeners,
-  cleanupSocketListeners,
-  reconnectSocket,
-} from '../utils/socketConnection';
+  IS_CLIENT,
+  APP_DISPLAY_NAME,
+  APP_VERSION,
+} from '../config/appConfig';
+import { useMonitorLive } from '../hooks/useMonitorLive';
+import {
+  ADMIN_SECTIONS,
+  CLIENT_SECTIONS,
+  getIstDateString,
+  formatDateForDisplay,
+  formatAngle,
+  formatTimeWithSeconds,
+  formatEventLocation,
+  countSensorHealth,
+} from '../utils/monitorHelpers';
 
 const Homepage = () => {
   const [selectedDate, setSelectedDate] = useState('');
   const [datePickerVisible, setDatePickerVisible] = useState(false);
-  const [openAlerts, setOpenAlerts] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [socketStatus, setSocketStatus] = useState('disconnected');
+  const [activeSection, setActiveSection] = useState('openAlerts');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [vrnSearch, setVrnSearch] = useState('');
   const [appliedVrn, setAppliedVrn] = useState('');
 
-  /* ---------------- Date Helpers ---------------- */
+  const sections = IS_CLIENT ? CLIENT_SECTIONS : ADMIN_SECTIONS;
+  const hideSpeed = IS_CLIENT;
 
-  console.log("openAlerts",openAlerts)
-  const formatDateToAPI = date => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const formatDateForDisplay = dateString => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-
-  const formatTime = timestamp => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
-  };
-
-  /* ---------------- API ---------------- */
-
-  const transformOpenAlertData = alertData => {
-    return alertData.map(alert => ({
-      id: alert._id,
-      message: alert.message,
-      vrn: alert.vrn,
-      movableLabel: alert.movableLabel,
-      fixedLabel: alert.fixedLabel,
-      time: formatTime(alert.timestamp),
-      speed: alert?.gps?.speed ?? 0,
-      lat: alert?.gps?.lat,
-      lng: alert?.gps?.long,
-      address: alert?.address || 'HX2C+9VH Anand, Gujarat, India',
-      rawData: alert,
-    }));
-  };
-
-  const fetchOpenAlerts = async (dateString = null, vrn = null) => {
-    try {
-      setLoading(true);
-      let response;
-
-      if (dateString) {
-        response = await getSelectedOpenAlert(dateString, vrn);
-      } else {
-        response = await getDefaultOpenAlert(vrn);
-      }
-
-      if (response?.success && Array.isArray(response.data)) {
-        setOpenAlerts(transformOpenAlertData(response.data));
-      } else {
-        setOpenAlerts([]);
-      }
-    } catch (error) {
-      console.log('Error fetching alerts:', error);
-      setOpenAlerts([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /* ---------------- Socket ---------------- */
-
-  const handleNewAlert = useCallback(() => {
-    fetchOpenAlerts(selectedDate || null, appliedVrn || null);
-  }, [selectedDate, appliedVrn]);
+  const {
+    openAlerts,
+    alerts,
+    packets,
+    comparisonLogs,
+    sensorStatus,
+    summary,
+    loading,
+    socketStatus,
+    refresh,
+    reconnectSocket,
+  } = useMonitorLive({ selectedDate, appliedVrn });
 
   useEffect(() => {
-    const callbacks = {
-      onConnect: () => setSocketStatus('connected'),
-      onDisconnect: () => setSocketStatus('disconnected'),
-      onConnectError: () => setSocketStatus('disconnected'),
-      onAlert: handleNewAlert,
-    };
-
-    setupSocketListeners(callbacks);
-
-    if (!isSocketConnected()) {
-      connectSocket();
-    }
-
-    return () => cleanupSocketListeners();
-  }, [handleNewAlert]);
-
-  /* ---------------- Initial Load ---------------- */
-
-  useEffect(() => {
-    const today = formatDateToAPI(new Date());
-    setSelectedDate(today);
+    setSelectedDate(getIstDateString(new Date()));
   }, []);
 
   useEffect(() => {
-    if (selectedDate) {
-      fetchOpenAlerts(selectedDate, appliedVrn || null);
+    if (activeSection !== 'status') {
+      setStatusFilter('all');
     }
-  }, [selectedDate, appliedVrn]);
+  }, [activeSection]);
+
+  const sensorHealth = countSensorHealth(sensorStatus?.vehicles || []);
 
   /* ---------------- Handlers ---------------- */
 
   const handleDateConfirm = date => {
-    const dateString = formatDateToAPI(date);
-    setSelectedDate(dateString);
+    setSelectedDate(getIstDateString(date));
     setDatePickerVisible(false);
   };
 
-  const handleVrnSearch = () => {
-    setAppliedVrn(vrnSearch.trim());
-  };
+  const handleVrnSearch = () => setAppliedVrn(vrnSearch.trim());
 
   const handleClearVrn = () => {
     setVrnSearch('');
     setAppliedVrn('');
   };
 
-  const handleDetailsPress = alert => {
-    Alert.alert(
-      'Alert Details',
-      `Message: ${alert.message}
-Speed: ${alert.speed} km/h
-Location: ${alert.rawData.gps.lat}, ${alert.rawData.gps.long}
-Address: ${alert.address}`,
-    );
-  };
-
-  // Google Maps redirection function
   const openInGoogleMaps = (lat, lng, label = 'Location') => {
-    if (!lat || !lng) {
+    if (lat == null || lng == null) {
       Alert.alert('Error', 'Location coordinates not available');
       return;
     }
 
     const scheme = Platform.select({
       ios: 'maps://0,0?q=',
-      android: 'geo:0,0?q='
+      android: 'geo:0,0?q=',
     });
-    
     const latLng = `${lat},${lng}`;
     const url = Platform.select({
       ios: `${scheme}${label}@${latLng}`,
-      android: `${scheme}${latLng}(${label})`
+      android: `${scheme}${latLng}(${label})`,
     });
 
     Linking.openURL(url).catch(() => {
-      // Fallback to Google Maps web URL
-      const webUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-      Linking.openURL(webUrl);
+      Linking.openURL(
+        `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
+      );
     });
   };
 
-  const handleGoToMap = alert => {
-    if (alert.lat && alert.lng) {
-      openInGoogleMaps(alert.lat, alert.lng, 'Alert Location');
+  const handleGoToMap = item => {
+    if (item.lat != null && item.lng != null) {
+      openInGoogleMaps(item.lat, item.lng, 'Alert Location');
     } else {
       Alert.alert('Error', 'Location coordinates not available for this alert');
     }
   };
 
-  /* ========================================================= */
+  const handleDetailsPress = item => {
+    Alert.alert(
+      item.vrn || 'Alert Details',
+      [
+        item.message && `Message: ${item.message}`,
+        !hideSpeed && item.speed != null && `Speed: ${item.speed} km/h`,
+        item.lat != null &&
+          item.lng != null &&
+          `Location: ${item.lat}, ${item.lng}`,
+        item.address && `Address: ${item.address}`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    );
+  };
 
-  const renderOpenAlerts = () => (
-    <>
-      {/* DATE */}
-      <View style={styles.dateSection}>
-        <TouchableOpacity
-          style={styles.dateRow}
-          onPress={() => setDatePickerVisible(true)}
-        >
-          <Calendar size={16} color="#2563eb" />
-          <Text style={styles.dateText}>
-            {selectedDate ? formatDateForDisplay(selectedDate) : 'Select Date'}
+  const handleEventDetailsPress = item => {
+    Alert.alert(
+      item.vrn || 'Event Details',
+      [
+        `Location: ${formatEventLocation(item)}`,
+        'Geofence: Yes',
+      ].join('\n'),
+    );
+  };
+
+  const applyStatusFilter = kind => {
+    setActiveSection('status');
+    setStatusFilter(prev => (prev === kind ? 'all' : kind));
+  };
+
+  // Header counts are the day totals for the selected date (from
+  // /monitor/summary), not the length of the capped list below them.
+  // Lists load only the latest 100-150 rows; the totals keep counting.
+  const dayTotal = (summaryValue, listLength) => {
+    const n = Number(summaryValue);
+    return Number.isFinite(n) && n > 0 ? n : listLength;
+  };
+
+  const sectionCounts = {
+    openAlerts: dayTotal(summary?.openAlerts, openAlerts.length),
+    events: dayTotal(summary?.events ?? summary?.securityAlerts, alerts.length),
+    alerts: dayTotal(summary?.events ?? summary?.securityAlerts, alerts.length),
+    packets: dayTotal(summary?.packets, packets.length),
+    comparisonLogs: comparisonLogs.length,
+    status: sensorHealth.normal + sensorHealth.faulty,
+  };
+
+  /* ---------------- Render lists ---------------- */
+
+  const renderList = () => {
+    const emptyHint = loading ? 'Loading…' : null;
+
+    if (activeSection === 'openAlerts') {
+      if (!openAlerts.length) {
+        return (
+          <Text style={styles.emptyText}>
+            {emptyHint ||
+              `No open alerts found${appliedVrn ? ` for VRN ${appliedVrn}` : ''}`}
           </Text>
-        </TouchableOpacity>
-      </View>
+        );
+      }
+      return openAlerts.map((alert, index) => (
+        <OpenAlertCard
+          key={alert.id}
+          alert={alert}
+          index={index}
+          hideSpeed={hideSpeed}
+          onPress={handleDetailsPress}
+          onGoToMap={handleGoToMap}
+        />
+      ));
+    }
 
-      {/* STATS */}
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <View style={[styles.statIconBox, styles.statIconOrange]}>
-            <AlertTriangle size={16} color="#ea580c" />
-          </View>
-          <View>
-            <Text style={styles.statLabel}>Open Alerts</Text>
-            <Text style={styles.statValue}>{openAlerts.length}</Text>
-          </View>
-        </View>
-      </View>
+    if (activeSection === 'alerts' || activeSection === 'events') {
+      if (!alerts.length) {
+        return (
+          <Text style={styles.emptyText}>
+            {emptyHint ||
+              `No events found${appliedVrn ? ` for VRN ${appliedVrn}` : ''}`}
+          </Text>
+        );
+      }
+      return alerts.map((alert, index) => (
+        <EventCard
+          key={alert.id}
+          alert={alert}
+          index={index}
+          eventMode={IS_CLIENT || activeSection === 'events'}
+          onPress={
+            IS_CLIENT || activeSection === 'events'
+              ? handleEventDetailsPress
+              : handleDetailsPress
+          }
+        />
+      ));
+    }
 
-      {/* VRN SEARCH */}
-      <View style={styles.searchCard}>
-        <View style={styles.searchInputWrapper}>
-          <Search size={18} color="#94a3b8" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search VRN, labels, gateway..."
-            placeholderTextColor="#94a3b8"
-            value={vrnSearch}
-            onChangeText={setVrnSearch}
-            autoCapitalize="characters"
-            returnKeyType="search"
-            onSubmitEditing={handleVrnSearch}
-          />
-          {vrnSearch.length > 0 && (
-            <TouchableOpacity onPress={handleClearVrn} style={styles.clearButton}>
-              <X size={16} color="#94a3b8" />
-            </TouchableOpacity>
-          )}
-        </View>
-        <TouchableOpacity style={styles.searchButton} onPress={handleVrnSearch}>
-          <Text style={styles.searchButtonText}>Search</Text>
-        </TouchableOpacity>
-        {appliedVrn ? (
-          <View style={styles.appliedVrnRow}>
-            <View style={styles.vrnChip}>
-              <Truck size={12} color="#2563eb" />
-              <Text style={styles.vrnChipText}>{appliedVrn}</Text>
-            </View>
-            <TouchableOpacity onPress={handleClearVrn}>
-              <Text style={styles.showAllText}>Show all vehicles</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-      </View>
+    if (activeSection === 'packets') {
+      if (!packets.length) {
+        return (
+          <Text style={styles.emptyText}>
+            {emptyHint ||
+              `No packets found${appliedVrn ? ` for VRN ${appliedVrn}` : ''}`}
+          </Text>
+        );
+      }
+      return packets.map((packet, index) => (
+        <PacketCard key={packet.id} packet={packet} index={index} />
+      ));
+    }
 
-      {/* ALERT LIST */}
-      {loading ? (
-        <Text style={styles.emptyText}>Loading alerts...</Text>
-      ) : openAlerts.length > 0 ? (
-        openAlerts.map((alert, index) => (
-          <AlertCard
-            key={alert.id}
-            alert={alert}
-            index={index}
-            onPress={handleDetailsPress}
-            onGoToMap={handleGoToMap}
-          />
-        ))
-      ) : (
+    if (activeSection === 'status') {
+      return (
+        <StatusSection
+          vehicles={sensorStatus?.vehicles || []}
+          loading={loading}
+          filter={statusFilter}
+        />
+      );
+    }
+
+    if (!comparisonLogs.length) {
+      return (
         <Text style={styles.emptyText}>
-          No open alerts found{appliedVrn ? ` for VRN ${appliedVrn}` : ''}
+          {emptyHint ||
+            `No comparison logs found${appliedVrn ? ` for VRN ${appliedVrn}` : ''}`}
         </Text>
-      )}
-    </>
-  );
+      );
+    }
+    return comparisonLogs.map((log, index) => (
+      <ComparisonCard key={log.id} log={log} index={index} />
+    ));
+  };
 
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.container}>
-        {/* HEADER */}
         <View style={styles.header}>
           <View style={{ alignItems: 'center' }}>
             <Image source={logo} style={styles.logo} resizeMode="contain" />
             <Text style={styles.companyText}>
               nmax Digital Business Transformation
             </Text>
-            <Text style={styles.title}>ATCS</Text>
+            <Text style={styles.title}>ATCS · {APP_DISPLAY_NAME}</Text>
+            <Text style={styles.versionText}>v{APP_VERSION}</Text>
           </View>
 
           <TouchableOpacity
@@ -313,17 +289,165 @@ Address: ${alert.address}`,
           >
             {socketStatus === 'connected' && <View style={styles.liveDot} />}
             <Text style={styles.socketText}>
-              {socketStatus === 'connected' ? 'Connected' : 'Disconnected'}
+              {socketStatus === 'connected' ? 'Live' : 'Offline'}
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* CONTENT */}
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          {renderOpenAlerts()}
+          <View style={styles.dateSection}>
+            <TouchableOpacity
+              style={styles.dateRow}
+              onPress={() => setDatePickerVisible(true)}
+            >
+              <Calendar size={16} color="#2563eb" />
+              <Text style={styles.dateText}>
+                {selectedDate
+                  ? formatDateForDisplay(selectedDate)
+                  : 'Select Date'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.refreshChip} onPress={refresh}>
+              <Text style={styles.refreshChipText}>
+                {loading ? 'Syncing…' : 'Refresh'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Stats / section switcher */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.statsRow}
+          >
+            {sections.map(section => {
+              const active = activeSection === section.id;
+              const iconColor = active ? '#2563eb' : '#64748b';
+              let Icon = AlertTriangle;
+              if (section.id === 'alerts') Icon = ShieldAlert;
+              if (section.id === 'events') Icon = Zap;
+              if (section.id === 'packets') Icon = Radio;
+              if (section.id === 'comparisonLogs') Icon = GitCompare;
+              if (section.id === 'status') Icon = Activity;
+
+              return (
+                <TouchableOpacity
+                  key={section.id}
+                  style={[styles.statCard, active && styles.statCardActive]}
+                  onPress={() => setActiveSection(section.id)}
+                  activeOpacity={0.85}
+                >
+                  <View
+                    style={[
+                      styles.statIconBox,
+                      active ? styles.statIconActive : styles.statIconMuted,
+                    ]}
+                  >
+                    <Icon size={16} color={iconColor} />
+                  </View>
+                  <View>
+                    <Text
+                      style={[
+                        styles.statLabel,
+                        active && styles.statLabelActive,
+                      ]}
+                    >
+                      {section.label}
+                    </Text>
+                    {section.id === 'status' ? (
+                      <View style={styles.statusCountRow}>
+                        <TouchableOpacity
+                          onPress={() => applyStatusFilter('normal')}
+                          style={[
+                            styles.statusCountChip,
+                            styles.statusCountChipNormal,
+                            statusFilter === 'normal' &&
+                              styles.statusCountChipActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusCountText,
+                              styles.statusCountTextNormal,
+                            ]}
+                          >
+                            {sensorHealth.normal} Normal
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => applyStatusFilter('faulty')}
+                          style={[
+                            styles.statusCountChip,
+                            styles.statusCountChipFaulty,
+                            statusFilter === 'faulty' &&
+                              styles.statusCountChipActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusCountText,
+                              styles.statusCountTextFaulty,
+                            ]}
+                          >
+                            {sensorHealth.faulty} Faulty
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <Text style={styles.statValue}>
+                        {sectionCounts[section.id]}
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.searchCard}>
+            <View style={styles.searchInputWrapper}>
+              <Search size={18} color="#94a3b8" />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search VRN, labels, gateway..."
+                placeholderTextColor="#94a3b8"
+                value={vrnSearch}
+                onChangeText={setVrnSearch}
+                autoCapitalize="characters"
+                returnKeyType="search"
+                onSubmitEditing={handleVrnSearch}
+              />
+              {vrnSearch.length > 0 && (
+                <TouchableOpacity
+                  onPress={handleClearVrn}
+                  style={styles.clearButton}
+                >
+                  <X size={16} color="#94a3b8" />
+                </TouchableOpacity>
+              )}
+            </View>
+            <TouchableOpacity
+              style={styles.searchButton}
+              onPress={handleVrnSearch}
+            >
+              <Text style={styles.searchButtonText}>Search</Text>
+            </TouchableOpacity>
+            {appliedVrn ? (
+              <View style={styles.appliedVrnRow}>
+                <View style={styles.vrnChip}>
+                  <Truck size={12} color="#2563eb" />
+                  <Text style={styles.vrnChipText}>{appliedVrn}</Text>
+                </View>
+                <TouchableOpacity onPress={handleClearVrn}>
+                  <Text style={styles.showAllText}>Show all vehicles</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </View>
+
+          {renderList()}
         </ScrollView>
 
-        {/* DATE PICKER */}
         <DatePicker
           modal
           open={datePickerVisible}
@@ -338,19 +462,65 @@ Address: ${alert.address}`,
   );
 };
 
-/* ========================================================= */
-/* ================= ALERT CARD COMPONENT ================== */
-/* ========================================================= */
+/* ===================== Cards ===================== */
 
-const AlertCard = ({ alert, index, onPress, onGoToMap }) => {
+const AngleChips = ({ movableZ, movableX, fixedZ, fixedX, alertStyle, detailed }) => (
+  <View style={styles.angleRow}>
+    <View
+      style={[
+        styles.angleChip,
+        detailed && styles.angleChipMovable,
+        alertStyle && styles.angleChipAlert,
+      ]}
+    >
+      <Text style={styles.angleChipText}>
+        {detailed ? 'Movable sensor' : 'Movable'} Z{' '}
+        <Text style={[styles.angleStrong, detailed && styles.valTimeMovable]}>
+          {formatAngle(movableZ)}°
+        </Text>
+        {' · '}X{' '}
+        <Text style={[styles.angleStrong, detailed && styles.valTimeMovable]}>
+          {formatAngle(movableX)}°
+        </Text>
+      </Text>
+    </View>
+    <View
+      style={[
+        styles.angleChip,
+        detailed && styles.angleChipFixed,
+        alertStyle && styles.angleChipAlert,
+      ]}
+    >
+      <Text style={styles.angleChipText}>
+        {detailed ? 'Fixed sensor' : 'Fixed'} Z{' '}
+        <Text style={[styles.angleStrong, detailed && styles.valTimeTrigger]}>
+          {formatAngle(fixedZ)}°
+        </Text>
+        {fixedX != null ? (
+          <>
+            {' · '}X{' '}
+            <Text style={[styles.angleStrong, detailed && styles.valTimeTrigger]}>
+              {formatAngle(fixedX)}°
+            </Text>
+          </>
+        ) : null}
+      </Text>
+    </View>
+  </View>
+);
+
+const OpenAlertCard = ({ alert, index, hideSpeed = false, onPress, onGoToMap }) => {
   const labelText = [alert.movableLabel, alert.fixedLabel]
     .filter(Boolean)
     .join(' / ');
 
   return (
-    <View style={styles.cardWrapper}>
-      <View style={styles.card}>
-        {/* Header — matches web fleet card */}
+    <TouchableOpacity
+      style={styles.cardWrapper}
+      onPress={() => onPress(alert)}
+      activeOpacity={0.9}
+    >
+      <View style={[styles.card, styles.cardOpenBorder]}>
         <View style={styles.cardHeader}>
           <View style={styles.cardHeaderLeft}>
             <View style={styles.truckIconBox}>
@@ -384,28 +554,31 @@ const AlertCard = ({ alert, index, onPress, onGoToMap }) => {
 
         <View style={styles.cardDivider} />
 
-        {/* Speed & Coordinates — web-style split panels */}
         <View style={styles.panelRow}>
-          <View style={styles.panel}>
-            <View style={styles.panelHeader}>
-              <Gauge size={14} color="#ea580c" />
-              <Text style={styles.panelTitle}>Speed</Text>
+          {!hideSpeed ? (
+            <View style={styles.panel}>
+              <View style={styles.panelHeader}>
+                <Gauge size={14} color="#ea580c" />
+                <Text style={styles.panelTitle}>Speed</Text>
+              </View>
+              <Text style={styles.panelValue}>
+                {alert.speed != null ? `${alert.speed} km/h` : '—'}
+              </Text>
             </View>
-            <Text style={styles.panelValue}>{alert.speed} km/h</Text>
-          </View>
-
+          ) : null}
           <View style={styles.panel}>
             <View style={styles.panelHeader}>
               <MapPin size={14} color="#2563eb" />
               <Text style={styles.panelTitle}>Coordinates</Text>
             </View>
             <Text style={styles.panelValue} numberOfLines={1}>
-              {alert.lat?.toFixed(4) || '22.5529'}, {alert.lng?.toFixed(4) || '72.9729'}
+              {alert.lat != null && alert.lng != null
+                ? `${alert.lat.toFixed(4)}, ${alert.lng.toFixed(4)}`
+                : '—'}
             </Text>
           </View>
         </View>
 
-        {/* Address */}
         <View style={styles.addressPanel}>
           <View style={styles.panelHeader}>
             <Navigation size={14} color="#2563eb" />
@@ -414,7 +587,6 @@ const AlertCard = ({ alert, index, onPress, onGoToMap }) => {
           <Text style={styles.addressText}>{alert.address}</Text>
         </View>
 
-        {/* Map Button */}
         <TouchableOpacity
           style={styles.mapButton}
           onPress={() => onGoToMap(alert)}
@@ -424,18 +596,282 @@ const AlertCard = ({ alert, index, onPress, onGoToMap }) => {
           <Text style={styles.mapButtonText}>Go to Map</Text>
         </TouchableOpacity>
       </View>
+    </TouchableOpacity>
+  );
+};
+
+const EventCard = ({ alert, index, onPress, eventMode = false }) => (
+  <TouchableOpacity
+    style={styles.cardWrapper}
+    onPress={() => onPress(alert)}
+    activeOpacity={0.9}
+  >
+    <View style={[styles.card, styles.cardAlertBorder]}>
+      <View style={styles.cardHeader}>
+        <View style={styles.cardHeaderLeft}>
+          <View style={[styles.truckIconBox, styles.iconAlert]}>
+            <ShieldAlert size={20} color="#fff" />
+          </View>
+          <View style={styles.cardHeaderInfo}>
+            <View style={styles.cardHeaderTopRow}>
+              {alert.vrn ? (
+                <View style={styles.vrnPill}>
+                  <Text style={styles.vrnPillText}>{alert.vrn}</Text>
+                </View>
+              ) : null}
+              <Text style={styles.cardIndex}>#{index + 1}</Text>
+            </View>
+            <Text style={styles.labelSubtitle}>Event</Text>
+          </View>
+        </View>
+        <View style={styles.timeBadge}>
+          <Clock size={11} color="#64748b" />
+          <Text style={styles.timeText}>{alert.time}</Text>
+        </View>
+      </View>
+      {!eventMode && alert.message ? (
+        <Text style={styles.messageText}>{alert.message}</Text>
+      ) : null}
+      {!eventMode ? (
+        <AngleChips
+          movableZ={alert.amulZ}
+          movableX={alert.amulX}
+          fixedZ={alert.amulFixedZ}
+          fixedX={alert.amulFixedX}
+          alertStyle
+        />
+      ) : null}
+      {eventMode ? (
+        <View style={styles.eventMetaRow}>
+          <View style={styles.eventMetaItem}>
+            <MapPin size={12} color="#2563eb" />
+            <Text style={styles.eventMetaText} numberOfLines={3}>
+              {formatEventLocation(alert)}
+            </Text>
+          </View>
+          <View style={styles.geofencePill}>
+            <Text style={styles.geofencePillText}>
+              Geofence: {alert.geofence === 'no' ? 'No' : 'Yes'}
+            </Text>
+          </View>
+        </View>
+      ) : alert.address ? (
+        <Text style={styles.metaLine}>{alert.address}</Text>
+      ) : null}
+    </View>
+  </TouchableOpacity>
+);
+
+const PacketCard = ({ packet, index }) => (
+  <View style={styles.cardWrapper}>
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <View style={styles.cardHeaderLeft}>
+          <View style={[styles.truckIconBox, styles.iconPacket]}>
+            <Radio size={18} color="#fff" />
+          </View>
+          <View style={styles.cardHeaderInfo}>
+            <View style={styles.cardHeaderTopRow}>
+              {packet.vrn ? (
+                <View style={styles.vrnPill}>
+                  <Text style={styles.vrnPillText}>{packet.vrn}</Text>
+                </View>
+              ) : null}
+              {packet.deviceRole ? (
+                <View style={styles.rolePill}>
+                  <Text style={styles.rolePillText}>{packet.deviceRole}</Text>
+                </View>
+              ) : null}
+              <Text style={styles.cardIndex}>#{index + 1}</Text>
+            </View>
+            {packet.deviceName ? (
+              <Text style={styles.labelSubtitle}>{packet.deviceName}</Text>
+            ) : null}
+          </View>
+        </View>
+        <View style={styles.timeBadge}>
+          <Clock size={11} color="#64748b" />
+          <Text style={styles.timeText}>{packet.time}</Text>
+        </View>
+      </View>
+      <View style={styles.angleRow}>
+        <View style={styles.angleChip}>
+          <Text style={styles.angleChipText}>
+            Z <Text style={styles.angleStrong}>{formatAngle(packet.angleZ)}</Text>
+            {' · '}X{' '}
+            <Text style={styles.angleStrong}>{formatAngle(packet.angleX)}</Text>
+            {' · '}Y{' '}
+            <Text style={styles.angleStrong}>{formatAngle(packet.angleY)}</Text>
+          </Text>
+        </View>
+        {packet.battery != null ? (
+          <View style={styles.angleChip}>
+            <Text style={styles.angleChipText}>
+              Battery{' '}
+              <Text style={styles.angleStrong}>{packet.battery}%</Text>
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </View>
+  </View>
+);
+
+const LogSectionTitle = ({ title }) => (
+  <Text style={styles.logSectionTitle}>{title}</Text>
+);
+
+const LogField = ({ label, value, valueStyle }) =>
+  value ? (
+    <Text style={styles.logFieldLine}>
+      <Text style={styles.logFieldLabel}>{label}: </Text>
+      <Text style={[styles.logFieldValue, valueStyle]}>{value}</Text>
+    </Text>
+  ) : null;
+
+const ComparisonCard = ({ log, index }) => {
+  const geofenceStyle =
+    String(log.geofence || '').toLowerCase() === 'yes'
+      ? styles.valGeofenceYes
+      : String(log.geofence || '').toLowerCase() === 'no'
+        ? styles.valGeofenceNo
+        : null;
+
+  return (
+    <View style={styles.cardWrapper}>
+      <View
+        style={[styles.card, log.isAlert ? styles.cardAlertBorder : null]}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.cardHeaderLeft}>
+            <View
+              style={[
+                styles.truckIconBox,
+                log.isAlert ? styles.iconAlert : styles.iconCompare,
+              ]}
+            >
+              <GitCompare size={18} color="#fff" />
+            </View>
+            <View style={styles.cardHeaderInfo}>
+              <View style={styles.cardHeaderTopRow}>
+                {log.vrn ? (
+                  <View style={styles.vrnPill}>
+                    <Text style={styles.vrnPillText}>{log.vrn}</Text>
+                  </View>
+                ) : null}
+                <View
+                  style={[
+                    styles.resultPill,
+                    log.isAlert ? styles.resultPillAlert : styles.resultPillOk,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.resultPillText,
+                      log.isAlert && styles.resultPillTextAlert,
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {log.isAlert ? 'Open Alert Triggered' : log.result}
+                  </Text>
+                </View>
+                <Text style={styles.cardIndex}>#{index + 1}</Text>
+              </View>
+            </View>
+          </View>
+          <View style={styles.timeBadge}>
+            <Clock size={11} color="#64748b" />
+            <Text style={styles.timeLabel}>Event time</Text>
+            <Text style={[styles.timeText, styles.valTimeEvent]}>{log.time}</Text>
+          </View>
+        </View>
+
+        <View style={styles.logSectionBox}>
+          <LogSectionTitle title="TIMING" />
+          <LogField
+            label="Movable sensor packet"
+            value={formatTimeWithSeconds(log.movableTime)}
+            valueStyle={styles.valTimeMovable}
+          />
+          <LogField
+            label="Fixed sensor packet"
+            value={formatTimeWithSeconds(log.fixedTime)}
+            valueStyle={styles.valTimeFixed}
+          />
+          <LogField
+            label="Angle trigger time"
+            value={formatTimeWithSeconds(log.angleTriggerTime)}
+            valueStyle={styles.valTimeTrigger}
+          />
+          <LogField
+            label="Amul GPS time"
+            value={formatTimeWithSeconds(log.gpsTimestamp)}
+            valueStyle={styles.valTimeGps}
+          />
+          <LogField
+            label="Amul raw timestamp"
+            value={log.gpsTimestampRaw}
+            valueStyle={styles.valRaw}
+          />
+        </View>
+
+        <View style={styles.logSectionBox}>
+          <LogSectionTitle title="LOCATION & GPS" />
+          <LogField
+            label="Vehicle speed"
+            value={log.gpsSpeed != null ? String(log.gpsSpeed) : null}
+            valueStyle={styles.valSpeed}
+          />
+          <LogField
+            label="Geofence status"
+            value={log.geofence != null ? String(log.geofence) : null}
+            valueStyle={geofenceStyle}
+          />
+          <LogField label="GPS source" value={log.gpsSource} valueStyle={styles.valSource} />
+          {log.gpsLat != null && log.gpsLong != null ? (
+            <LogField
+              label="GPS coordinates"
+              value={`${Number(log.gpsLat).toFixed(5)}, ${Number(log.gpsLong).toFixed(5)}`}
+              valueStyle={styles.valCoords}
+            />
+          ) : null}
+          {log.gpsAddress ? (
+            <LogField
+              label="GPS address"
+              value={log.gpsAddress}
+              valueStyle={styles.valAddress}
+            />
+          ) : null}
+        </View>
+
+        <View style={styles.logSectionBox}>
+          <LogSectionTitle title="SENSOR ANGLES" />
+          <AngleChips
+            movableZ={log.amulZ}
+            movableX={log.amulX}
+            fixedZ={log.fixedZ}
+            fixedX={log.fixedX}
+            alertStyle={log.isAlert}
+            detailed
+          />
+        </View>
+
+        {log.message ? (
+          <Text style={styles.metaLine} numberOfLines={2}>
+            <Text style={styles.logFieldLabel}>Summary: </Text>
+            <Text style={log.isAlert ? styles.valAlert : styles.valSummary}>
+              {log.message}
+            </Text>
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f1f5f9' },
-
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 24,
-  },
-
+  scrollContent: { padding: 16, paddingBottom: 24 },
   header: {
     alignItems: 'center',
     paddingVertical: 16,
@@ -445,21 +881,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
   },
-
   logo: { width: 64, height: 64 },
-
-  companyText: {
-    fontSize: 11,
-    color: '#64748b',
-  },
-
+  companyText: { fontSize: 11, color: '#64748b' },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     marginTop: 2,
     color: '#0f172a',
   },
-
+  versionText: {
+    fontSize: 10,
+    color: '#94a3b8',
+    marginTop: 2,
+  },
   socketBadge: {
     position: 'absolute',
     right: 16,
@@ -472,34 +906,35 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
   },
-
-  connected: {
-    backgroundColor: '#f0fdf4',
-    borderColor: '#bbf7d0',
-  },
-
-  disconnected: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#fecaca',
-  },
-
+  connected: { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' },
+  disconnected: { backgroundColor: '#fef2f2', borderColor: '#fecaca' },
   liveDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
     backgroundColor: '#22c55e',
   },
-
-  socketText: {
-    fontWeight: '600',
-    fontSize: 11,
-    color: '#334155',
-  },
-
+  socketText: { fontWeight: '600', fontSize: 11, color: '#334155' },
   dateSection: {
     marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
   },
-
+  refreshChip: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  refreshChipText: {
+    color: '#2563eb',
+    fontWeight: '600',
+    fontSize: 12,
+  },
   dateRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -512,21 +947,10 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
     alignSelf: 'flex-start',
   },
-
-  dateText: {
-    fontWeight: '600',
-    color: '#2563eb',
-    fontSize: 13,
-  },
-
-  statsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
-  },
-
+  dateText: { fontWeight: '600', color: '#2563eb', fontSize: 13 },
+  statsRow: { gap: 10, marginBottom: 12, paddingRight: 8 },
   statCard: {
-    flex: 1,
+    minWidth: 140,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -536,7 +960,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
-
+  statCardActive: {
+    borderColor: '#93c5fd',
+    backgroundColor: '#eff6ff',
+  },
   statIconBox: {
     width: 36,
     height: 36,
@@ -544,33 +971,46 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  statIconOrange: {
-    backgroundColor: '#fff7ed',
+  statIconMuted: { backgroundColor: '#f1f5f9' },
+  statIconActive: { backgroundColor: '#dbeafe' },
+  statLabel: { fontSize: 11, color: '#64748b', fontWeight: '500' },
+  statLabelActive: { color: '#2563eb' },
+  statValue: { fontSize: 20, fontWeight: '700', color: '#0f172a' },
+  statusCountRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
   },
-
-  statLabel: {
-    fontSize: 11,
-    color: '#64748b',
-    fontWeight: '500',
+  statusCountChip: {
+    borderRadius: 6,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
   },
-
-  statValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#0f172a',
+  statusCountChipNormal: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#bbf7d0',
   },
-
+  statusCountChipFaulty: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  statusCountChipActive: {
+    borderWidth: 2,
+  },
+  statusCountText: { fontSize: 11, fontWeight: '700' },
+  statusCountTextNormal: { color: '#16a34a' },
+  statusCountTextFaulty: { color: '#dc2626' },
   searchCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     padding: 12,
-    marginBottom: 16,
+    marginBottom: 12,
     gap: 10,
   },
-
   searchInputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -581,37 +1021,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     gap: 8,
   },
-
   searchInput: {
     flex: 1,
     paddingVertical: 10,
     fontSize: 14,
     color: '#0f172a',
   },
-
-  clearButton: {
-    padding: 4,
-  },
-
+  clearButton: { padding: 4 },
   searchButton: {
     backgroundColor: '#2563eb',
     paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
   },
-
-  searchButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-
+  searchButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   appliedVrnRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-
   vrnChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -623,30 +1051,21 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 20,
   },
-
-  vrnChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#2563eb',
+  vrnChipText: { fontSize: 13, fontWeight: '600', color: '#2563eb' },
+  showAllText: { fontSize: 12, color: '#64748b', fontWeight: '500' },
+  sectionHint: {
+    fontSize: 11,
+    color: '#94a3b8',
+    marginBottom: 10,
+    lineHeight: 16,
   },
-
-  showAllText: {
-    fontSize: 12,
-    color: '#64748b',
-    fontWeight: '500',
-  },
-
   emptyText: {
     textAlign: 'center',
     color: '#94a3b8',
     marginTop: 24,
     fontSize: 14,
   },
-
-  cardWrapper: {
-    marginBottom: 12,
-  },
-
+  cardWrapper: { marginBottom: 12 },
   card: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -659,21 +1078,20 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-
+  cardOpenBorder: { borderLeftWidth: 3, borderLeftColor: '#f59e0b' },
+  cardAlertBorder: { borderLeftWidth: 3, borderLeftColor: '#ef4444' },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: 8,
   },
-
   cardHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
     flex: 1,
   },
-
   truckIconBox: {
     width: 40,
     height: 40,
@@ -682,19 +1100,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  cardHeaderInfo: {
-    flex: 1,
-    gap: 3,
-  },
-
+  iconAlert: { backgroundColor: '#dc2626' },
+  iconPacket: { backgroundColor: '#0d9488' },
+  iconCompare: { backgroundColor: '#64748b' },
+  cardHeaderInfo: { flex: 1, gap: 3 },
   cardHeaderTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     flexWrap: 'wrap',
   },
-
   vrnPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -706,30 +1121,59 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 6,
   },
-
-  vrnPillText: {
-    fontSize: 13,
+  vrnPillText: { fontSize: 13, fontWeight: '700', color: '#2563eb' },
+  rolePill: {
+    backgroundColor: '#f0fdfa',
+    borderWidth: 1,
+    borderColor: '#99f6e4',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  rolePillText: {
+    fontSize: 10,
     fontWeight: '700',
-    color: '#2563eb',
+    color: '#0f766e',
+    textTransform: 'uppercase',
   },
-
-  cardIndex: {
-    fontSize: 12,
-    color: '#94a3b8',
-    fontWeight: '500',
+  cardIndex: { fontSize: 12, color: '#94a3b8', fontWeight: '500' },
+  labelSubtitle: { fontSize: 13, color: '#64748b', fontWeight: '500' },
+  compareTimes: { gap: 2, marginBottom: 6 },
+  compareTimeLine: { fontSize: 11, color: '#64748b' },
+  logSectionBox: {
+    marginTop: 8,
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-
-  labelSubtitle: {
-    fontSize: 13,
+  logSectionTitle: {
+    fontSize: 9,
+    fontWeight: '800',
     color: '#64748b',
-    fontWeight: '500',
+    letterSpacing: 0.8,
+    marginBottom: 4,
   },
-
-  cardHeaderRight: {
-    alignItems: 'flex-end',
-    gap: 6,
-  },
-
+  logFieldLine: { fontSize: 11, lineHeight: 17, marginBottom: 2 },
+  logFieldLabel: { color: '#64748b', fontWeight: '500' },
+  logFieldValue: { fontWeight: '800' },
+  valTimeEvent: { color: '#1d4ed8' },
+  valTimeMovable: { color: '#0369a1' },
+  valTimeFixed: { color: '#4338ca' },
+  valTimeTrigger: { color: '#6d28d9' },
+  valTimeGps: { color: '#0e7490' },
+  valRaw: { color: '#334155' },
+  valSpeed: { color: '#b45309' },
+  valGeofenceYes: { color: '#15803d' },
+  valGeofenceNo: { color: '#dc2626' },
+  valSource: { color: '#334155' },
+  valCoords: { color: '#0f172a' },
+  valAddress: { color: '#1e293b' },
+  valAlert: { color: '#dc2626', fontWeight: '700' },
+  valSummary: { color: '#334155', fontWeight: '600' },
+  timeLabel: { fontSize: 9, color: '#94a3b8', marginTop: 2 },
+  cardHeaderRight: { alignItems: 'flex-end', gap: 6 },
   openAlertPill: {
     backgroundColor: '#fff7ed',
     borderWidth: 1,
@@ -738,7 +1182,6 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 6,
   },
-
   openAlertPillText: {
     fontSize: 10,
     fontWeight: '700',
@@ -746,31 +1189,31 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
-
-  timeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  resultPill: {
+    maxWidth: 140,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
   },
-
-  timeText: {
-    fontSize: 11,
-    color: '#64748b',
-    fontWeight: '500',
+  resultPillOk: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#e2e8f0',
   },
-
+  resultPillAlert: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  resultPillText: { fontSize: 10, fontWeight: '700', color: '#475569' },
+  resultPillTextAlert: { color: '#dc2626' },
+  timeBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  timeText: { fontSize: 11, color: '#64748b', fontWeight: '500' },
   cardDivider: {
     height: 1,
     backgroundColor: '#f1f5f9',
     marginVertical: 12,
   },
-
-  panelRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 10,
-  },
-
+  panelRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
   panel: {
     flex: 1,
     backgroundColor: '#f8fafc',
@@ -780,25 +1223,9 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 6,
   },
-
-  panelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-
-  panelTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-
-  panelValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-
+  panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  panelTitle: { fontSize: 12, fontWeight: '600', color: '#64748b' },
+  panelValue: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
   addressPanel: {
     backgroundColor: '#f8fafc',
     borderRadius: 10,
@@ -808,14 +1235,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 6,
   },
-
   addressText: {
     fontSize: 13,
     color: '#475569',
     fontWeight: '500',
     lineHeight: 18,
   },
-
   mapButton: {
     backgroundColor: '#2563eb',
     paddingVertical: 10,
@@ -825,12 +1250,69 @@ const styles = StyleSheet.create({
     gap: 8,
     justifyContent: 'center',
   },
-
-  mapButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
+  mapButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  messageText: {
+    marginTop: 10,
+    fontSize: 13,
+    color: '#334155',
+    lineHeight: 18,
   },
+  metaLine: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#64748b',
+    lineHeight: 16,
+  },
+  angleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  angleChip: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  angleChipAlert: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  angleChipMovable: {
+    backgroundColor: '#f0f9ff',
+    borderColor: '#bae6fd',
+  },
+  angleChipFixed: {
+    backgroundColor: '#f5f3ff',
+    borderColor: '#ddd6fe',
+  },
+  angleChipText: { fontSize: 11, color: '#64748b' },
+  angleStrong: { color: '#0f172a', fontWeight: '700' },
+  eventMetaRow: { marginTop: 10, gap: 8 },
+  eventMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 10,
+  },
+  eventMetaText: { flex: 1, fontSize: 12, color: '#475569', lineHeight: 16 },
+  geofencePill: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  geofencePillText: { fontSize: 11, fontWeight: '700', color: '#16a34a' },
 });
 
 export default Homepage;
