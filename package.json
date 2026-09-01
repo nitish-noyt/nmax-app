@@ -3,12 +3,18 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "android": "react-native run-android",
+    "android": "react-native run-android --mode=adminDebug --appId=com.nmax.admin",
+    "android:admin": "react-native run-android --mode=adminDebug --appId=com.nmax.admin",
+    "android:client": "react-native run-android --mode=clientDebug --appId=com.nmax.client",
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",
     "test": "jest",
-    "generateAPK": "react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res && cd android && ./gradlew assembleDebug && cd .."
+    "bundle:android": "react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res",
+    "build:admin": "cd android && ./gradlew assembleAdminRelease && cd ..",
+    "build:client": "cd android && ./gradlew assembleClientRelease && cd ..",
+    "build:all": "cd android && ./gradlew assembleAdminRelease assembleClientRelease && cd ..",
+    "generateAPK": "npm run bundle:android && npm run build:all"
   },
   "dependencies": {
     "@react-native/new-app-screen": "0.82.1",
