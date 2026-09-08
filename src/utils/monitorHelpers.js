@@ -77,6 +77,18 @@ export function formatTime(timestamp) {
   });
 }
 
+/** "2h 5m" / "3m 20s" / "45s" — bottom open durations */
+export function formatDurationSeconds(value) {
+  if (value == null || !Number.isFinite(Number(value))) return '—';
+  const total = Math.max(0, Math.round(Number(value)));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
 /** HH:MM:SS in IST — used for comparison log timestamps */
 export function formatTimeWithSeconds(timestamp) {
   if (!timestamp) return '—';
@@ -139,6 +151,18 @@ export function transformOpenAlert(alert) {
     amulFixedZ: alert.amulFixedZ,
     amulFixedX: alert.amulFixedX,
     recentAlertCount: alert.recentAlertCount,
+    sensorZone: alert.sensorZone === 'bottom' ? 'bottom' : 'top',
+    bottomLabel: alert.bottomLabel || null,
+    bottomOpenSince: alert.bottomOpenSince || null,
+    bottomOpenSinceText: alert.bottomOpenSince
+      ? formatTime(alert.bottomOpenSince)
+      : null,
+    bottomOpenSeconds: alert.bottomOpenSeconds ?? null,
+    bottomClosedAt: alert.bottomClosedAt || null,
+    bottomClosedAtText: alert.bottomClosedAt
+      ? formatTime(alert.bottomClosedAt)
+      : null,
+    magnet: alert.magnet || null,
     rawData: alert,
   };
 }
@@ -168,6 +192,18 @@ export function transformAlert(alert) {
     amulX: alert.amulX,
     amulFixedZ: alert.amulFixedZ,
     amulFixedX: alert.amulFixedX,
+    sensorZone: alert.sensorZone === 'bottom' ? 'bottom' : 'top',
+    bottomLabel: alert.bottomLabel || null,
+    bottomOpenSince: alert.bottomOpenSince || null,
+    bottomOpenSinceText: alert.bottomOpenSince
+      ? formatTime(alert.bottomOpenSince)
+      : null,
+    bottomOpenSeconds: alert.bottomOpenSeconds ?? null,
+    bottomClosedAt: alert.bottomClosedAt || null,
+    bottomClosedAtText: alert.bottomClosedAt
+      ? formatTime(alert.bottomClosedAt)
+      : null,
+    magnet: alert.magnet || null,
     outcome: alert.outcome,
     status: alert.status,
     vanished: Boolean(alert.vanished),
@@ -282,6 +318,10 @@ export function countSensorHealth(vehicles = []) {
     else faulty += 1;
     if (v.fixed?.status === 'normal') normal += 1;
     else faulty += 1;
+    if (v.bottom) {
+      if (v.bottom.status === 'normal') normal += 1;
+      else faulty += 1;
+    }
   }
   return { normal, faulty };
 }

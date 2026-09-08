@@ -47,6 +47,7 @@ import {
   formatTimeWithSeconds,
   formatEventLocation,
   countSensorHealth,
+  formatDurationSeconds,
 } from '../utils/monitorHelpers';
 
 const Homepage = () => {
@@ -54,6 +55,7 @@ const Homepage = () => {
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [activeSection, setActiveSection] = useState('openAlerts');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [zoneFilter, setZoneFilter] = useState('all');
   const [vrnSearch, setVrnSearch] = useState('');
   const [appliedVrn, setAppliedVrn] = useState('');
 
@@ -80,6 +82,9 @@ const Homepage = () => {
   useEffect(() => {
     if (activeSection !== 'status') {
       setStatusFilter('all');
+    }
+    if (activeSection !== 'openAlerts' && activeSection !== 'alerts' && activeSection !== 'events') {
+      setZoneFilter('all');
     }
   }, [activeSection]);
 
@@ -131,11 +136,29 @@ const Homepage = () => {
   };
 
   const handleDetailsPress = item => {
+    const isBottom = item.sensorZone === 'bottom';
     Alert.alert(
       item.vrn || 'Alert Details',
       [
+        isBottom && `Type: Bottom (magnet sensor)`,
         item.message && `Message: ${item.message}`,
-        !hideSpeed && item.speed != null && `Speed: ${item.speed} km/h`,
+        isBottom &&
+          item.bottomOpenSinceText &&
+          `Open since: ${item.bottomOpenSinceText}`,
+        isBottom &&
+          item.bottomOpenSeconds != null &&
+          `${item.bottomClosedAt ? 'Was open for' : 'Open for'}: ${formatDurationSeconds(item.bottomOpenSeconds)}`,
+        isBottom &&
+          item.bottomClosedAtText &&
+          `Closed at: ${item.bottomClosedAtText}`,
+        isBottom &&
+          item.magnet?.temperature != null &&
+          `Temperature: ${item.magnet.temperature}°C`,
+        isBottom &&
+          item.magnet?.humidity != null &&
+          `Humidity: ${item.magnet.humidity}%`,
+        item.geofence && `Geofence: ${item.geofence === 'no' ? 'No' : 'Yes'}`,
+        !hideSpeed && !isBottom && item.speed != null && `Speed: ${item.speed} km/h`,
         item.lat != null &&
           item.lng != null &&
           `Location: ${item.lat}, ${item.lng}`,
@@ -169,6 +192,10 @@ const Homepage = () => {
     return Number.isFinite(n) && n > 0 ? n : listLength;
   };
 
+  const zoneOf = item => (item.sensorZone === 'bottom' ? 'bottom' : 'top');
+  const zoneFiltered = list =>
+    zoneFilter === 'all' ? list : list.filter(i => zoneOf(i) === zoneFilter);
+
   const sectionCounts = {
     openAlerts: dayTotal(summary?.openAlerts, openAlerts.length),
     events: dayTotal(summary?.events ?? summary?.securityAlerts, alerts.length),
@@ -192,16 +219,32 @@ const Homepage = () => {
           </Text>
         );
       }
-      return openAlerts.map((alert, index) => (
-        <OpenAlertCard
-          key={alert.id}
-          alert={alert}
-          index={index}
-          hideSpeed={hideSpeed}
-          onPress={handleDetailsPress}
-          onGoToMap={handleGoToMap}
-        />
-      ));
+      const zonedOpen = zoneFiltered(openAlerts);
+      return (
+        <>
+          <ZoneChips
+            list={openAlerts}
+            value={zoneFilter}
+            onChange={setZoneFilter}
+          />
+          {zonedOpen.length ? (
+            zonedOpen.map((alert, index) => (
+              <OpenAlertCard
+                key={alert.id}
+                alert={alert}
+                index={index}
+                hideSpeed={hideSpeed}
+                onPress={handleDetailsPress}
+                onGoToMap={handleGoToMap}
+              />
+            ))
+          ) : (
+            <Text style={styles.emptyText}>
+              No {zoneFilter} open alerts for this date
+            </Text>
+          )}
+        </>
+      );
     }
 
     if (activeSection === 'alerts' || activeSection === 'events') {
@@ -213,19 +256,35 @@ const Homepage = () => {
           </Text>
         );
       }
-      return alerts.map((alert, index) => (
-        <EventCard
-          key={alert.id}
-          alert={alert}
-          index={index}
-          eventMode={IS_CLIENT || activeSection === 'events'}
-          onPress={
-            IS_CLIENT || activeSection === 'events'
-              ? handleEventDetailsPress
-              : handleDetailsPress
-          }
-        />
-      ));
+      const zonedEvents = zoneFiltered(alerts);
+      return (
+        <>
+          <ZoneChips
+            list={alerts}
+            value={zoneFilter}
+            onChange={setZoneFilter}
+          />
+          {zonedEvents.length ? (
+            zonedEvents.map((alert, index) => (
+              <EventCard
+                key={alert.id}
+                alert={alert}
+                index={index}
+                eventMode={IS_CLIENT || activeSection === 'events'}
+                onPress={
+                  IS_CLIENT || activeSection === 'events'
+                    ? handleEventDetailsPress
+                    : handleDetailsPress
+                }
+              />
+            ))
+          ) : (
+            <Text style={styles.emptyText}>
+              No {zoneFilter} events for this date
+            </Text>
+          )}
+        </>
+      );
     }
 
     if (activeSection === 'packets') {
@@ -509,6 +568,121 @@ const AngleChips = ({ movableZ, movableX, fixedZ, fixedX, alertStyle, detailed }
   </View>
 );
 
+const ZoneChips = ({ list, value, onChange }) => {
+  const topCount = list.filter(i => i.sensorZone !== 'bottom').length;
+  const bottomCount = list.filter(i => i.sensorZone === 'bottom').length;
+  const chips = [
+    { key: 'all', label: 'All', count: list.length },
+    { key: 'top', label: 'Top', count: topCount },
+    { key: 'bottom', label: 'Bottom', count: bottomCount },
+  ];
+  return (
+    <View style={styles.zoneChipsRow}>
+      {chips.map(chip => {
+        const active = value === chip.key;
+        return (
+          <TouchableOpacity
+            key={chip.key}
+            style={[
+              styles.zoneChip,
+              active &&
+                (chip.key === 'bottom'
+                  ? styles.zoneChipActiveBottom
+                  : styles.zoneChipActive),
+            ]}
+            onPress={() => onChange(chip.key)}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[styles.zoneChipText, active && styles.zoneChipTextActive]}
+            >
+              {chip.label} {chip.count}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+};
+
+const ZonePill = ({ zone }) => (
+  <View
+    style={[
+      styles.zonePill,
+      zone === 'bottom' ? styles.zonePillBottom : styles.zonePillTop,
+    ]}
+  >
+    <Text
+      style={[
+        styles.zonePillText,
+        zone === 'bottom' ? styles.zonePillTextBottom : styles.zonePillTextTop,
+      ]}
+    >
+      {zone === 'bottom' ? 'BOTTOM' : 'TOP'}
+    </Text>
+  </View>
+);
+
+/** Open-since / duration / climate strip for bottom (magnet) records */
+const BottomOpenPanel = ({ alert }) => {
+  const stillOpen = !alert.bottomClosedAt;
+  return (
+    <View
+      style={[
+        styles.bottomPanel,
+        stillOpen ? styles.bottomPanelOpen : styles.bottomPanelClosed,
+      ]}
+    >
+      <View style={styles.bottomPanelRow}>
+        <Text
+          style={[
+            styles.bottomStateText,
+            stillOpen ? styles.bottomStateOpen : styles.bottomStateClosed,
+          ]}
+        >
+          {stillOpen ? 'STILL OPEN' : 'CLOSED'}
+        </Text>
+        {alert.bottomOpenSinceText ? (
+          <Text style={styles.bottomMetaText}>
+            since <Text style={styles.bottomMetaStrong}>{alert.bottomOpenSinceText}</Text>
+          </Text>
+        ) : null}
+        <Text style={styles.bottomMetaText}>
+          {stillOpen ? 'open for ' : 'was open '}
+          <Text
+            style={[
+              styles.bottomMetaStrong,
+              stillOpen && styles.bottomStateOpen,
+            ]}
+          >
+            {formatDurationSeconds(alert.bottomOpenSeconds)}
+          </Text>
+        </Text>
+        {alert.bottomClosedAtText ? (
+          <Text style={styles.bottomMetaText}>
+            closed <Text style={styles.bottomMetaStrong}>{alert.bottomClosedAtText}</Text>
+          </Text>
+        ) : null}
+      </View>
+      {alert.magnet &&
+      (alert.magnet.temperature != null || alert.magnet.humidity != null) ? (
+        <View style={styles.bottomPanelRow}>
+          {alert.magnet.temperature != null ? (
+            <Text style={styles.bottomMetaText}>
+              Temp <Text style={styles.bottomMetaStrong}>{alert.magnet.temperature}°C</Text>
+            </Text>
+          ) : null}
+          {alert.magnet.humidity != null ? (
+            <Text style={styles.bottomMetaText}>
+              Humidity <Text style={styles.bottomMetaStrong}>{alert.magnet.humidity}%</Text>
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+};
+
 const OpenAlertCard = ({ alert, index, hideSpeed = false, onPress, onGoToMap }) => {
   const labelText = [alert.movableLabel, alert.fixedLabel]
     .filter(Boolean)
@@ -543,8 +717,13 @@ const OpenAlertCard = ({ alert, index, hideSpeed = false, onPress, onGoToMap }) 
           </View>
           <View style={styles.cardHeaderRight}>
             <View style={styles.openAlertPill}>
-              <Text style={styles.openAlertPillText}>Open Alert</Text>
+              <Text style={styles.openAlertPillText}>
+                {alert.sensorZone === 'bottom'
+                  ? 'Bottom Open Alert'
+                  : 'Top Open Alert'}
+              </Text>
             </View>
+            <ZonePill zone={alert.sensorZone} />
             <View style={styles.timeBadge}>
               <Clock size={11} color="#64748b" />
               <Text style={styles.timeText}>{alert.time}</Text>
@@ -554,8 +733,12 @@ const OpenAlertCard = ({ alert, index, hideSpeed = false, onPress, onGoToMap }) 
 
         <View style={styles.cardDivider} />
 
+        {alert.sensorZone === 'bottom' ? (
+          <BottomOpenPanel alert={alert} />
+        ) : null}
+
         <View style={styles.panelRow}>
-          {!hideSpeed ? (
+          {!hideSpeed && alert.sensorZone !== 'bottom' ? (
             <View style={styles.panel}>
               <View style={styles.panelHeader}>
                 <Gauge size={14} color="#ea580c" />
@@ -621,7 +804,12 @@ const EventCard = ({ alert, index, onPress, eventMode = false }) => (
               ) : null}
               <Text style={styles.cardIndex}>#{index + 1}</Text>
             </View>
-            <Text style={styles.labelSubtitle}>Event</Text>
+            <View style={styles.cardHeaderTopRow}>
+              <Text style={styles.labelSubtitle}>
+                {alert.sensorZone === 'bottom' ? 'Bottom Event' : 'Top Event'}
+              </Text>
+              <ZonePill zone={alert.sensorZone} />
+            </View>
           </View>
         </View>
         <View style={styles.timeBadge}>
@@ -629,10 +817,11 @@ const EventCard = ({ alert, index, onPress, eventMode = false }) => (
           <Text style={styles.timeText}>{alert.time}</Text>
         </View>
       </View>
+      {alert.sensorZone === 'bottom' ? <BottomOpenPanel alert={alert} /> : null}
       {!eventMode && alert.message ? (
         <Text style={styles.messageText}>{alert.message}</Text>
       ) : null}
-      {!eventMode ? (
+      {!eventMode && alert.sensorZone !== 'bottom' ? (
         <AngleChips
           movableZ={alert.amulZ}
           movableX={alert.amulX}
@@ -870,6 +1059,101 @@ const ComparisonCard = ({ log, index }) => {
 };
 
 const styles = StyleSheet.create({
+  zoneChipsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  zoneChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 18,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  zoneChipActive: {
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
+  },
+  zoneChipActiveBottom: {
+    backgroundColor: '#7c3aed',
+    borderColor: '#7c3aed',
+  },
+  zoneChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  zoneChipTextActive: {
+    color: '#fff',
+  },
+  zonePill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  zonePillTop: {
+    backgroundColor: '#e0f2fe',
+    borderColor: '#bae6fd',
+  },
+  zonePillBottom: {
+    backgroundColor: '#ede9fe',
+    borderColor: '#ddd6fe',
+  },
+  zonePillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  zonePillTextTop: {
+    color: '#0369a1',
+  },
+  zonePillTextBottom: {
+    color: '#6d28d9',
+  },
+  bottomPanel: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 10,
+    marginBottom: 10,
+    gap: 6,
+  },
+  bottomPanelOpen: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  bottomPanelClosed: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#e2e8f0',
+  },
+  bottomPanelRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 12,
+    rowGap: 4,
+  },
+  bottomStateText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  bottomStateOpen: {
+    color: '#dc2626',
+  },
+  bottomStateClosed: {
+    color: '#16a34a',
+  },
+  bottomMetaText: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  bottomMetaStrong: {
+    color: '#0f172a',
+    fontWeight: '700',
+  },
   container: { flex: 1, backgroundColor: '#f1f5f9' },
   scrollContent: { padding: 16, paddingBottom: 24 },
   header: {

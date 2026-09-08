@@ -120,12 +120,13 @@ function SensorRow({ label, sensor }) {
   );
 }
 
-function VehicleStatusCard({ vehicle, showMovable, showFixed }) {
+function VehicleStatusCard({ vehicle, showMovable, showFixed, showBottom }) {
   const [open, setOpen] = useState(false);
   const history = vehicle.faultHistory || [];
   const activeLogs = [];
   if (vehicle.movable?.activeFault) activeLogs.push(vehicle.movable.activeFault);
   if (vehicle.fixed?.activeFault) activeLogs.push(vehicle.fixed.activeFault);
+  if (vehicle.bottom?.activeFault) activeLogs.push(vehicle.bottom.activeFault);
 
   const logs = [
     ...activeLogs,
@@ -148,9 +149,9 @@ function VehicleStatusCard({ vehicle, showMovable, showFixed }) {
           </View>
           <View style={styles.headerInfo}>
             <Text style={styles.vrn}>{vehicle.vrn}</Text>
-            {(vehicle.movableLabel || vehicle.fixedLabel) && (
+            {(vehicle.movableLabel || vehicle.fixedLabel || vehicle.bottomLabel) && (
               <Text style={styles.subtitle}>
-                {[vehicle.movableLabel, vehicle.fixedLabel]
+                {[vehicle.movableLabel, vehicle.fixedLabel, vehicle.bottomLabel]
                   .filter(Boolean)
                   .join(' / ')}
               </Text>
@@ -172,6 +173,9 @@ function VehicleStatusCard({ vehicle, showMovable, showFixed }) {
       ) : null}
       {showFixed ? (
         <SensorRow label="Fixed Sensor" sensor={vehicle.fixed} />
+      ) : null}
+      {vehicle.bottom && showBottom ? (
+        <SensorRow label="Bottom Sensor" sensor={vehicle.bottom} />
       ) : null}
 
       {open ? (
@@ -201,8 +205,11 @@ export function StatusSection({
     .map(vehicle => {
       const showMovable = filter === 'all' || vehicle.movable?.status === filter;
       const showFixed = filter === 'all' || vehicle.fixed?.status === filter;
-      if (!showMovable && !showFixed) return null;
-      return { vehicle, showMovable, showFixed };
+      const showBottom =
+        vehicle.bottom != null &&
+        (filter === 'all' || vehicle.bottom?.status === filter);
+      if (!showMovable && !showFixed && !showBottom) return null;
+      return { vehicle, showMovable, showFixed, showBottom };
     })
     .filter(Boolean);
 
@@ -224,12 +231,13 @@ export function StatusSection({
 
   return (
     <View style={styles.wrap}>
-      {filtered.map(({ vehicle, showMovable, showFixed }) => (
+      {filtered.map(({ vehicle, showMovable, showFixed, showBottom }) => (
         <VehicleStatusCard
           key={vehicle.vrn}
           vehicle={vehicle}
           showMovable={showMovable}
           showFixed={showFixed}
+          showBottom={showBottom}
         />
       ))}
     </View>
