@@ -3,8 +3,11 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
 react {
-    /* Both flavor debug variants must skip embedded bundling and use Metro */
-    debuggableVariants = ["adminDebug", "clientDebug"]
+    /* Every flavor's debug variant skips embedded bundling and uses Metro */
+    debuggableVariants = [
+        "adminDevDebug", "adminProdDebug",
+        "clientDevDebug", "clientProdDebug",
+    ]
     autolinkLibrariesWithApp()
 }
 
@@ -26,23 +29,46 @@ android {
         applicationId "com.nmax"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 8
-        versionName "1.5.0"
+        versionCode 9
+        versionName "1.5.1"
     }
 
-    flavorDimensions "role"
+    /*
+     * role = who the build is for (admin / client)
+     * env  = which server it talks to (dev / prod)
+     *
+     * The env dimension carries its own applicationId suffix, so a dev build
+     * installs alongside the prod app instead of replacing it. The server URL
+     * comes from BuildConfig, so no source file is edited between builds.
+     *
+     * For a build against a machine on the LAN or an emulator host, pass the
+     * origin on the command line — release builds from npm never set it:
+     *   ./gradlew installAdminDevDebug -PapiBase=http://10.0.2.2:8000
+     */
+    flavorDimensions "role", "env"
     productFlavors {
         admin {
             dimension "role"
             applicationId "com.nmax.admin"
-            resValue "string", "app_name", "NMAX Admin"
             buildConfigField "String", "APP_FLAVOR", "\"admin\""
         }
         client {
             dimension "role"
             applicationId "com.nmax.client"
-            resValue "string", "app_name", "NMAX Client"
             buildConfigField "String", "APP_FLAVOR", "\"client\""
+        }
+        dev {
+            dimension "env"
+            applicationIdSuffix ".dev"
+            versionNameSuffix "-dev"
+            buildConfigField "String", "APP_ENV", "\"dev\""
+            buildConfigField "String", "API_BASE_URL",
+                "\"${project.findProperty('apiBase') ?: 'https://nmax-dev.noytindia.com'}\""
+        }
+        prod {
+            dimension "env"
+            buildConfigField "String", "APP_ENV", "\"prod\""
+            buildConfigField "String", "API_BASE_URL", "\"https://nmax.noytindia.com\""
         }
     }
 
@@ -63,6 +89,15 @@ android {
             signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+
+    /* APKs land as nmax-admin-dev-1.5.1.apk etc. so builds are never mixed up */
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            def role = variant.productFlavors.find { it.dimension == "role" }.name
+            def env = variant.productFlavors.find { it.dimension == "env" }.name
+            outputFileName = "nmax-${role}-${env}-${variant.versionName}.apk"
         }
     }
 }

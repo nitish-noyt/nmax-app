@@ -3,18 +3,21 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "android": "react-native run-android --mode=adminDebug --appId=com.nmax.admin",
-    "android:admin": "react-native run-android --mode=adminDebug --appId=com.nmax.admin",
-    "android:client": "react-native run-android --mode=clientDebug --appId=com.nmax.client",
+    "android": "react-native run-android --mode=adminDevDebug --appId=com.nmax.admin.dev",
+    "android:admin": "react-native run-android --mode=adminDevDebug --appId=com.nmax.admin.dev",
+    "android:client": "react-native run-android --mode=clientDevDebug --appId=com.nmax.client.dev",
+    "android:admin:prod": "react-native run-android --mode=adminProdDebug --appId=com.nmax.admin",
+    "android:client:prod": "react-native run-android --mode=clientProdDebug --appId=com.nmax.client",
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",
     "test": "jest",
     "bundle:android": "react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res",
-    "build:admin": "cd android && ./gradlew assembleAdminRelease && cd ..",
-    "build:client": "cd android && ./gradlew assembleClientRelease && cd ..",
-    "build:all": "cd android && ./gradlew assembleAdminRelease assembleClientRelease && cd ..",
-    "generateAPK": "npm run bundle:android && npm run build:all"
+    "build:dev": "cd android && ./gradlew assembleAdminDevRelease assembleClientDevRelease && cd ..",
+    "build:prod": "cd android && ./gradlew assembleAdminProdRelease assembleClientProdRelease && cd ..",
+    "apk:dev": "npm run bundle:android && npm run build:dev && node scripts/collect-apks.js dev",
+    "apk:prod": "npm run bundle:android && npm run build:prod && node scripts/collect-apks.js prod",
+    "apk:all": "npm run apk:dev && npm run apk:prod"
   },
   "dependencies": {
     "@react-native/new-app-screen": "0.82.1",

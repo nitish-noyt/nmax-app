@@ -93,13 +93,24 @@ function FaultLogRow({ log }) {
   );
 }
 
-function SensorRow({ label, sensor }) {
+function SensorRow({ label, sensor, zone }) {
   const isNormal = sensor?.status === 'normal';
+  const isBottom = zone === 'bottom';
   return (
     <View style={styles.sensorRow}>
       <View style={styles.sensorLeft}>
         <Radio size={14} color={isNormal ? '#16a34a' : '#dc2626'} />
         <Text style={styles.sensorLabel}>{label}</Text>
+        <View style={[styles.zoneTag, isBottom ? styles.zoneTagBottom : styles.zoneTagTop]}>
+          <Text
+            style={[
+              styles.zoneTagText,
+              isBottom ? styles.zoneTagTextBottom : styles.zoneTagTextTop,
+            ]}
+          >
+            {isBottom ? 'BOTTOM' : 'TOP'}
+          </Text>
+        </View>
       </View>
       <View
         style={[
@@ -169,13 +180,13 @@ function VehicleStatusCard({ vehicle, showMovable, showFixed, showBottom }) {
       </TouchableOpacity>
 
       {showMovable ? (
-        <SensorRow label="Movable Sensor" sensor={vehicle.movable} />
+        <SensorRow label="Movable Sensor" zone="top" sensor={vehicle.movable} />
       ) : null}
       {showFixed ? (
-        <SensorRow label="Fixed Sensor" sensor={vehicle.fixed} />
+        <SensorRow label="Fixed Sensor" zone="top" sensor={vehicle.fixed} />
       ) : null}
-      {vehicle.bottom && showBottom ? (
-        <SensorRow label="Bottom Sensor" sensor={vehicle.bottom} />
+      {showBottom ? (
+        <SensorRow label="Bottom Sensor" zone="bottom" sensor={vehicle.bottom} />
       ) : null}
 
       {open ? (
@@ -203,11 +214,16 @@ export function StatusSection({
 }) {
   const filtered = vehicles
     .map(vehicle => {
-      const showMovable = filter === 'all' || vehicle.movable?.status === filter;
-      const showFixed = filter === 'all' || vehicle.fixed?.status === filter;
+      // A zone the tanker is not fitted with reports null and is skipped
+      const showMovable =
+        vehicle.movable != null &&
+        (filter === 'all' || vehicle.movable.status === filter);
+      const showFixed =
+        vehicle.fixed != null &&
+        (filter === 'all' || vehicle.fixed.status === filter);
       const showBottom =
         vehicle.bottom != null &&
-        (filter === 'all' || vehicle.bottom?.status === filter);
+        (filter === 'all' || vehicle.bottom.status === filter);
       if (!showMovable && !showFixed && !showBottom) return null;
       return { vehicle, showMovable, showFixed, showBottom };
     })
@@ -292,6 +308,16 @@ const styles = StyleSheet.create({
   },
   sensorLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sensorLabel: { fontSize: 13, fontWeight: '600', color: '#334155' },
+  zoneTag: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  zoneTagTop: { backgroundColor: '#e0f2fe' },
+  zoneTagBottom: { backgroundColor: '#ede9fe' },
+  zoneTagText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
+  zoneTagTextTop: { color: '#0369a1' },
+  zoneTagTextBottom: { color: '#6d28d9' },
   statusPill: {
     paddingHorizontal: 10,
     paddingVertical: 4,

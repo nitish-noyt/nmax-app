@@ -28,6 +28,8 @@ import {
   GitCompare,
   Activity,
   Zap,
+  ArrowUpFromLine,
+  ArrowDownToLine,
 } from 'lucide-react-native';
 
 import logo from '../assets/images/nmax-logo.png';
@@ -53,9 +55,8 @@ import {
 const Homepage = () => {
   const [selectedDate, setSelectedDate] = useState('');
   const [datePickerVisible, setDatePickerVisible] = useState(false);
-  const [activeSection, setActiveSection] = useState('openAlerts');
+  const [activeSection, setActiveSection] = useState('openTop');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [zoneFilter, setZoneFilter] = useState('all');
   const [vrnSearch, setVrnSearch] = useState('');
   const [appliedVrn, setAppliedVrn] = useState('');
 
@@ -82,9 +83,6 @@ const Homepage = () => {
   useEffect(() => {
     if (activeSection !== 'status') {
       setStatusFilter('all');
-    }
-    if (activeSection !== 'openAlerts' && activeSection !== 'alerts' && activeSection !== 'events') {
-      setZoneFilter('all');
     }
   }, [activeSection]);
 
@@ -193,13 +191,18 @@ const Homepage = () => {
   };
 
   const zoneOf = item => (item.sensorZone === 'bottom' ? 'bottom' : 'top');
-  const zoneFiltered = list =>
-    zoneFilter === 'all' ? list : list.filter(i => zoneOf(i) === zoneFilter);
+  const inZone = (list, zone) => list.filter(i => zoneOf(i) === zone);
+
+  const activeMeta = sections.find(s => s.id === activeSection) || {};
 
   const sectionCounts = {
-    openAlerts: dayTotal(summary?.openAlerts, openAlerts.length),
-    events: dayTotal(summary?.events ?? summary?.securityAlerts, alerts.length),
-    alerts: dayTotal(summary?.events ?? summary?.securityAlerts, alerts.length),
+    openTop: dayTotal(summary?.topOpenAlerts, inZone(openAlerts, 'top').length),
+    openBottom: dayTotal(
+      summary?.bottomOpenAlerts,
+      inZone(openAlerts, 'bottom').length,
+    ),
+    eventsTop: dayTotal(summary?.topEvents, inZone(alerts, 'top').length),
+    eventsBottom: dayTotal(summary?.bottomEvents, inZone(alerts, 'bottom').length),
     packets: dayTotal(summary?.packets, packets.length),
     comparisonLogs: comparisonLogs.length,
     status: sensorHealth.normal + sensorHealth.faulty,
@@ -210,81 +213,52 @@ const Homepage = () => {
   const renderList = () => {
     const emptyHint = loading ? 'Loading…' : null;
 
-    if (activeSection === 'openAlerts') {
-      if (!openAlerts.length) {
+    const zoneWord = activeMeta.zone === 'bottom' ? 'bottom' : 'top';
+
+    if (activeMeta.kind === 'openAlerts') {
+      const zoned = inZone(openAlerts, zoneWord);
+      if (!zoned.length) {
         return (
           <Text style={styles.emptyText}>
             {emptyHint ||
-              `No open alerts found${appliedVrn ? ` for VRN ${appliedVrn}` : ''}`}
+              `No ${zoneWord} open alerts${appliedVrn ? ` for VRN ${appliedVrn}` : ''}`}
           </Text>
         );
       }
-      const zonedOpen = zoneFiltered(openAlerts);
-      return (
-        <>
-          <ZoneChips
-            list={openAlerts}
-            value={zoneFilter}
-            onChange={setZoneFilter}
-          />
-          {zonedOpen.length ? (
-            zonedOpen.map((alert, index) => (
-              <OpenAlertCard
-                key={alert.id}
-                alert={alert}
-                index={index}
-                hideSpeed={hideSpeed}
-                onPress={handleDetailsPress}
-                onGoToMap={handleGoToMap}
-              />
-            ))
-          ) : (
-            <Text style={styles.emptyText}>
-              No {zoneFilter} open alerts for this date
-            </Text>
-          )}
-        </>
-      );
+      return zoned.map((alert, index) => (
+        <OpenAlertCard
+          key={alert.id}
+          alert={alert}
+          index={index}
+          hideSpeed={hideSpeed}
+          onPress={handleDetailsPress}
+          onGoToMap={handleGoToMap}
+        />
+      ));
     }
 
-    if (activeSection === 'alerts' || activeSection === 'events') {
-      if (!alerts.length) {
+    if (activeMeta.kind === 'events') {
+      const zoned = inZone(alerts, zoneWord);
+      if (!zoned.length) {
         return (
           <Text style={styles.emptyText}>
             {emptyHint ||
-              `No events found${appliedVrn ? ` for VRN ${appliedVrn}` : ''}`}
+              `No ${zoneWord} events${appliedVrn ? ` for VRN ${appliedVrn}` : ''}`}
           </Text>
         );
       }
-      const zonedEvents = zoneFiltered(alerts);
-      return (
-        <>
-          <ZoneChips
-            list={alerts}
-            value={zoneFilter}
-            onChange={setZoneFilter}
-          />
-          {zonedEvents.length ? (
-            zonedEvents.map((alert, index) => (
-              <EventCard
-                key={alert.id}
-                alert={alert}
-                index={index}
-                eventMode={IS_CLIENT || activeSection === 'events'}
-                onPress={
-                  IS_CLIENT || activeSection === 'events'
-                    ? handleEventDetailsPress
-                    : handleDetailsPress
-                }
-              />
-            ))
-          ) : (
-            <Text style={styles.emptyText}>
-              No {zoneFilter} events for this date
-            </Text>
-          )}
-        </>
-      );
+      // Bottom events carry their own open/close detail, so they use the
+      // full details sheet rather than the top-only geofence summary
+      const useEventSheet = zoneWord === 'top';
+      return zoned.map((alert, index) => (
+        <EventCard
+          key={alert.id}
+          alert={alert}
+          index={index}
+          eventMode
+          onPress={useEventSheet ? handleEventDetailsPress : handleDetailsPress}
+        />
+      ));
     }
 
     if (activeSection === 'packets') {
@@ -381,10 +355,12 @@ const Homepage = () => {
           >
             {sections.map(section => {
               const active = activeSection === section.id;
-              const iconColor = active ? '#2563eb' : '#64748b';
+              const isBottom = section.zone === 'bottom';
+              const accent = isBottom ? '#7c3aed' : '#2563eb';
+              const iconColor = active ? accent : '#64748b';
               let Icon = AlertTriangle;
-              if (section.id === 'alerts') Icon = ShieldAlert;
-              if (section.id === 'events') Icon = Zap;
+              if (section.kind === 'openAlerts') Icon = ShieldAlert;
+              if (section.kind === 'events') Icon = Zap;
               if (section.id === 'packets') Icon = Radio;
               if (section.id === 'comparisonLogs') Icon = GitCompare;
               if (section.id === 'status') Icon = Activity;
@@ -392,23 +368,38 @@ const Homepage = () => {
               return (
                 <TouchableOpacity
                   key={section.id}
-                  style={[styles.statCard, active && styles.statCardActive]}
+                  style={[
+                    styles.statCard,
+                    active &&
+                      (isBottom
+                        ? styles.statCardActiveBottom
+                        : styles.statCardActive),
+                  ]}
                   onPress={() => setActiveSection(section.id)}
                   activeOpacity={0.85}
                 >
                   <View
                     style={[
                       styles.statIconBox,
-                      active ? styles.statIconActive : styles.statIconMuted,
+                      active
+                        ? isBottom
+                          ? styles.statIconActiveBottom
+                          : styles.statIconActive
+                        : styles.statIconMuted,
                     ]}
                   >
                     <Icon size={16} color={iconColor} />
                   </View>
                   <View>
+                    {section.zone ? (
+                      <ZoneTag zone={section.zone} active={active} />
+                    ) : null}
                     <Text
                       style={[
                         styles.statLabel,
-                        active && styles.statLabelActive,
+                        active && (isBottom
+                          ? styles.statLabelActiveBottom
+                          : styles.statLabelActive),
                       ]}
                     >
                       {section.label}
@@ -568,39 +559,17 @@ const AngleChips = ({ movableZ, movableX, fixedZ, fixedX, alertStyle, detailed }
   </View>
 );
 
-const ZoneChips = ({ list, value, onChange }) => {
-  const topCount = list.filter(i => i.sensorZone !== 'bottom').length;
-  const bottomCount = list.filter(i => i.sensorZone === 'bottom').length;
-  const chips = [
-    { key: 'all', label: 'All', count: list.length },
-    { key: 'top', label: 'Top', count: topCount },
-    { key: 'bottom', label: 'Bottom', count: bottomCount },
-  ];
+/** TOP / BOTTOM tag on a section card, with the direction arrow */
+const ZoneTag = ({ zone, active }) => {
+  const isBottom = zone === 'bottom';
+  const Arrow = isBottom ? ArrowDownToLine : ArrowUpFromLine;
+  const color = active ? (isBottom ? '#7c3aed' : '#2563eb') : '#94a3b8';
   return (
-    <View style={styles.zoneChipsRow}>
-      {chips.map(chip => {
-        const active = value === chip.key;
-        return (
-          <TouchableOpacity
-            key={chip.key}
-            style={[
-              styles.zoneChip,
-              active &&
-                (chip.key === 'bottom'
-                  ? styles.zoneChipActiveBottom
-                  : styles.zoneChipActive),
-            ]}
-            onPress={() => onChange(chip.key)}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[styles.zoneChipText, active && styles.zoneChipTextActive]}
-            >
-              {chip.label} {chip.count}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
+    <View style={styles.zoneTagRow}>
+      <Arrow size={10} color={color} />
+      <Text style={[styles.zoneTagText, { color }]}>
+        {isBottom ? 'BOTTOM' : 'TOP'}
+      </Text>
     </View>
   );
 };
@@ -1059,34 +1028,16 @@ const ComparisonCard = ({ log, index }) => {
 };
 
 const styles = StyleSheet.create({
-  zoneChipsRow: {
+  zoneTagRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
+    alignItems: 'center',
+    gap: 3,
+    marginBottom: 1,
   },
-  zoneChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 18,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  zoneChipActive: {
-    backgroundColor: '#2563eb',
-    borderColor: '#2563eb',
-  },
-  zoneChipActiveBottom: {
-    backgroundColor: '#7c3aed',
-    borderColor: '#7c3aed',
-  },
-  zoneChipText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748b',
-  },
-  zoneChipTextActive: {
-    color: '#fff',
+  zoneTagText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   zonePill: {
     paddingHorizontal: 7,
@@ -1248,6 +1199,10 @@ const styles = StyleSheet.create({
     borderColor: '#93c5fd',
     backgroundColor: '#eff6ff',
   },
+  statCardActiveBottom: {
+    borderColor: '#c4b5fd',
+    backgroundColor: '#f5f3ff',
+  },
   statIconBox: {
     width: 36,
     height: 36,
@@ -1257,8 +1212,10 @@ const styles = StyleSheet.create({
   },
   statIconMuted: { backgroundColor: '#f1f5f9' },
   statIconActive: { backgroundColor: '#dbeafe' },
+  statIconActiveBottom: { backgroundColor: '#ede9fe' },
   statLabel: { fontSize: 11, color: '#64748b', fontWeight: '500' },
   statLabelActive: { color: '#2563eb' },
+  statLabelActiveBottom: { color: '#7c3aed' },
   statValue: { fontSize: 20, fontWeight: '700', color: '#0f172a' },
   statusCountRow: {
     flexDirection: 'row',

@@ -11,6 +11,8 @@ class AppConfigModule(reactContext: ReactApplicationContext) :
   override fun getConstants(): MutableMap<String, Any> =
       hashMapOf(
           "APP_FLAVOR" to BuildConfig.APP_FLAVOR,
+          "APP_ENV" to BuildConfig.APP_ENV,
+          "API_BASE_URL" to BuildConfig.API_BASE_URL,
           "APP_VERSION" to BuildConfig.VERSION_NAME,
           "VERSION_CODE" to BuildConfig.VERSION_CODE,
           "APPLICATION_ID" to BuildConfig.APPLICATION_ID,

@@ -9,20 +9,24 @@ export const OPEN_ALERT_RESULT = 'OPEN ALERT TRIGGERED';
 /** IST offset from UTC in milliseconds (UTC+05:30). */
 export const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
+/**
+ * Top-level sections. Top and bottom sensors get their own tab so either zone
+ * is one tap away instead of a filter inside a list.
+ * `kind` groups the zone tabs; `zone` is which sensor the list shows.
+ */
 export const ADMIN_SECTIONS = [
-  { id: 'openAlerts', label: 'Open Alerts' },
-  { id: 'events', label: 'Events' },
+  { id: 'openTop', label: 'Open Alerts', kind: 'openAlerts', zone: 'top' },
+  { id: 'openBottom', label: 'Open Alerts', kind: 'openAlerts', zone: 'bottom' },
+  { id: 'eventsTop', label: 'Events', kind: 'events', zone: 'top' },
+  { id: 'eventsBottom', label: 'Events', kind: 'events', zone: 'bottom' },
   { id: 'packets', label: 'Packets' },
   { id: 'comparisonLogs', label: 'Comparisons' },
   { id: 'status', label: 'Status' },
 ];
 
-export const CLIENT_SECTIONS = [
-  { id: 'openAlerts', label: 'Open Alerts' },
-  { id: 'events', label: 'Events' },
-  { id: 'packets', label: 'Packets' },
-  { id: 'status', label: 'Status' },
-];
+export const CLIENT_SECTIONS = ADMIN_SECTIONS.filter(
+  s => s.id !== 'comparisonLogs',
+);
 
 /** @deprecated use ADMIN_SECTIONS / CLIENT_SECTIONS */
 export const SECTIONS = ADMIN_SECTIONS;
@@ -314,12 +318,11 @@ export function countSensorHealth(vehicles = []) {
   let normal = 0;
   let faulty = 0;
   for (const v of vehicles) {
-    if (v.movable?.status === 'normal') normal += 1;
-    else faulty += 1;
-    if (v.fixed?.status === 'normal') normal += 1;
-    else faulty += 1;
-    if (v.bottom) {
-      if (v.bottom.status === 'normal') normal += 1;
+    // Only sensors the tanker is fitted with are counted — an unfitted zone
+    // arrives as null and is neither normal nor faulty
+    for (const sensor of [v.movable, v.fixed, v.bottom]) {
+      if (!sensor) continue;
+      if (sensor.status === 'normal') normal += 1;
       else faulty += 1;
     }
   }

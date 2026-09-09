@@ -1,9 +1,9 @@
 // api/APIFunction.js
 import axios from 'axios';
-import { PROD } from '../config/appConfig';
+import { SERVER } from '../config/appConfig';
 
 const API = axios.create({
-  baseURL: PROD.apiBaseUrl,
+  baseURL: SERVER.apiBaseUrl,
   timeout: 20000,
 });
 

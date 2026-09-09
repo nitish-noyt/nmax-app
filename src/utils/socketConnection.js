@@ -1,5 +1,5 @@
 import io from 'socket.io-client';
-import { PROD } from '../config/appConfig';
+import { SERVER } from '../config/appConfig';
 
 export const SOCKET_EVENTS = {
   PACKET: 'packet',
@@ -8,7 +8,7 @@ export const SOCKET_EVENTS = {
   COMPARISON_LOG: 'comparison_log',
 };
 
-const SOCKET_URL = PROD.socketUrl;
+const SOCKET_URL = SERVER.socketUrl;
 
 const socket = io(SOCKET_URL, {
   transports: ['websocket', 'polling'],
