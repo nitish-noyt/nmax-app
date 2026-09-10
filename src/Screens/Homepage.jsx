@@ -138,7 +138,7 @@ const Homepage = () => {
     Alert.alert(
       item.vrn || 'Alert Details',
       [
-        isBottom && `Type: Bottom (magnet sensor)`,
+        isBottom && `Type: Bottom sensor`,
         item.message && `Message: ${item.message}`,
         isBottom &&
           item.bottomOpenSinceText &&
@@ -155,8 +155,11 @@ const Homepage = () => {
         isBottom &&
           item.magnet?.humidity != null &&
           `Humidity: ${item.magnet.humidity}%`,
+        isBottom &&
+          item.magnet?.status != null &&
+          `Sensor: ${item.bottomClosedAt ? 'Closed' : 'Open'}`,
         item.geofence && `Geofence: ${item.geofence === 'no' ? 'No' : 'Yes'}`,
-        !hideSpeed && !isBottom && item.speed != null && `Speed: ${item.speed} km/h`,
+        !hideSpeed && item.speed != null && `Speed: ${item.speed} km/h`,
         item.lat != null &&
           item.lng != null &&
           `Location: ${item.lat}, ${item.lng}`,
@@ -173,7 +176,10 @@ const Homepage = () => {
       [
         `Location: ${formatEventLocation(item)}`,
         'Geofence: Yes',
-      ].join('\n'),
+        !hideSpeed && item.speed != null && `Speed: ${item.speed} km/h`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
     );
   };
 
@@ -256,6 +262,7 @@ const Homepage = () => {
           alert={alert}
           index={index}
           eventMode
+          hideSpeed={hideSpeed}
           onPress={useEventSheet ? handleEventDetailsPress : handleDetailsPress}
         />
       ));
@@ -592,7 +599,7 @@ const ZonePill = ({ zone }) => (
   </View>
 );
 
-/** Open-since / duration / climate strip for bottom (magnet) records */
+/** Open-since / duration / climate strip for bottom-sensor records */
 const BottomOpenPanel = ({ alert }) => {
   const stillOpen = !alert.bottomClosedAt;
   return (
@@ -633,8 +640,7 @@ const BottomOpenPanel = ({ alert }) => {
           </Text>
         ) : null}
       </View>
-      {alert.magnet &&
-      (alert.magnet.temperature != null || alert.magnet.humidity != null) ? (
+      {alert.magnet ? (
         <View style={styles.bottomPanelRow}>
           {alert.magnet.temperature != null ? (
             <Text style={styles.bottomMetaText}>
@@ -644,6 +650,19 @@ const BottomOpenPanel = ({ alert }) => {
           {alert.magnet.humidity != null ? (
             <Text style={styles.bottomMetaText}>
               Humidity <Text style={styles.bottomMetaStrong}>{alert.magnet.humidity}%</Text>
+            </Text>
+          ) : null}
+          {alert.magnet.status != null ? (
+            <Text style={styles.bottomMetaText}>
+              Sensor{' '}
+              <Text
+                style={[
+                  styles.bottomMetaStrong,
+                  stillOpen && styles.bottomStateOpen,
+                ]}
+              >
+                {stillOpen ? 'Open' : 'Closed'}
+              </Text>
             </Text>
           ) : null}
         </View>
@@ -707,7 +726,7 @@ const OpenAlertCard = ({ alert, index, hideSpeed = false, onPress, onGoToMap }) 
         ) : null}
 
         <View style={styles.panelRow}>
-          {!hideSpeed && alert.sensorZone !== 'bottom' ? (
+          {!hideSpeed ? (
             <View style={styles.panel}>
               <View style={styles.panelHeader}>
                 <Gauge size={14} color="#ea580c" />
@@ -752,7 +771,7 @@ const OpenAlertCard = ({ alert, index, hideSpeed = false, onPress, onGoToMap }) 
   );
 };
 
-const EventCard = ({ alert, index, onPress, eventMode = false }) => (
+const EventCard = ({ alert, index, onPress, eventMode = false, hideSpeed = false }) => (
   <TouchableOpacity
     style={styles.cardWrapper}
     onPress={() => onPress(alert)}
@@ -812,6 +831,12 @@ const EventCard = ({ alert, index, onPress, eventMode = false }) => (
               Geofence: {alert.geofence === 'no' ? 'No' : 'Yes'}
             </Text>
           </View>
+          {!hideSpeed && alert.speed != null ? (
+            <View style={styles.speedPill}>
+              <Gauge size={11} color="#ea580c" />
+              <Text style={styles.speedPillText}>{alert.speed} km/h</Text>
+            </View>
+          ) : null}
         </View>
       ) : alert.address ? (
         <Text style={styles.metaLine}>{alert.address}</Text>
@@ -1553,6 +1578,19 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 6,
   },
+  speedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+  },
+  speedPillText: { fontSize: 11, fontWeight: '700', color: '#b45309' },
   geofencePillText: { fontSize: 11, fontWeight: '700', color: '#16a34a' },
 });
 
