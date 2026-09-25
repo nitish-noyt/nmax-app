@@ -24,17 +24,21 @@ async function getData(path, params) {
   return response.data;
 }
 
-/** Security alerts */
-export const getAlerts = async (date, vrn, limit) => {
-  return getData('/alerts/all', buildParams({ date, vrn, limit }));
+/**
+ * Security alerts. `zone` keeps top and bottom on separate budgets — bottom
+ * rows are rare next to top rows, so one capped request can come back with a
+ * busy day's newest top rows and none of that day's bottom rows at all.
+ */
+export const getAlerts = async (date, vrn, limit, zone) => {
+  return getData('/alerts/all', buildParams({ date, vrn, limit, zone }));
 };
 
 /** @deprecated use getAlerts */
 export const getAllAlerts = async date => getAlerts(date);
 
 /** Open alerts — date optional */
-export const getOpenAlerts = async (date, vrn, limit) => {
-  return getData('/open-alerts/all', buildParams({ date, vrn, limit }));
+export const getOpenAlerts = async (date, vrn, limit, zone) => {
+  return getData('/open-alerts/all', buildParams({ date, vrn, limit, zone }));
 };
 
 export const getDefaultOpenAlert = async vrn => getOpenAlerts(undefined, vrn);

@@ -50,6 +50,7 @@ import {
   formatEventLocation,
   countSensorHealth,
   formatDurationSeconds,
+  uniqueById,
 } from '../utils/monitorHelpers';
 
 const Homepage = () => {
@@ -197,7 +198,8 @@ const Homepage = () => {
   };
 
   const zoneOf = item => (item.sensorZone === 'bottom' ? 'bottom' : 'top');
-  const inZone = (list, zone) => list.filter(i => zoneOf(i) === zone);
+  const inZone = (list, zone) =>
+    uniqueById(list.filter(i => zoneOf(i) === zone));
 
   const activeMeta = sections.find(s => s.id === activeSection) || {};
 

@@ -269,10 +269,22 @@ export function transformPacket(packet) {
  * Prepend item; dedupe by id only (matches web/API semantics).
  */
 export function prependUnique(list, item, { limit } = {}) {
-  let next = list.filter(a => a.id !== item.id);
+  const key = String(item?.id ?? '');
+  let next = list.filter(a => String(a?.id ?? '') !== key);
   next = [item, ...next];
   if (limit != null) next = next.slice(0, limit);
   return next;
+}
+
+/** Last line of defence against a row appearing twice in one list */
+export function uniqueById(rows) {
+  const seen = new Set();
+  return (rows || []).filter(row => {
+    const key = String(row?.id ?? '');
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function emptySummary() {

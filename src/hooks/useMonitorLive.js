@@ -80,6 +80,26 @@ function applyPacketToSensorStatus(prev, incoming) {
  * - AppState foreground resume → reconnect + sync
  * - Periodic API reconciliation while foregrounded
  */
+/** Newest first, so a merged top+bottom list reads like one timeline */
+function mergeByTime(a, b) {
+  return [...(a || []), ...(b || [])].sort(
+    (x, y) => new Date(y.timestamp || 0) - new Date(x.timestamp || 0),
+  );
+}
+
+/** Caps each sensor zone separately, so top rows can never crowd out bottom */
+function capPerZone(rows, limit) {
+  const seen = { top: 0, bottom: 0 };
+  const kept = [];
+  for (const row of rows || []) {
+    const zone = row?.sensorZone === 'bottom' ? 'bottom' : 'top';
+    if (seen[zone] >= limit) continue;
+    seen[zone] += 1;
+    kept.push(row);
+  }
+  return kept;
+}
+
 export function useMonitorLive({ selectedDate, appliedVrn }) {
   const [openAlerts, setOpenAlerts] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -128,8 +148,14 @@ export function useMonitorLive({ selectedDate, appliedVrn }) {
 
       if (IS_CLIENT) {
         const results = await Promise.allSettled([
-          getOpenAlerts(dateString, vrn, CLIENT_LIST_LIMIT),
-          getAlerts(dateString, vrn, CLIENT_LIST_LIMIT),
+          Promise.all([
+            getOpenAlerts(dateString, vrn, CLIENT_LIST_LIMIT, 'top'),
+            getOpenAlerts(dateString, vrn, CLIENT_LIST_LIMIT, 'bottom'),
+          ]).then(([t, b]) => ({ data: mergeByTime(t?.data, b?.data) })),
+          Promise.all([
+            getAlerts(dateString, vrn, CLIENT_LIST_LIMIT, 'top'),
+            getAlerts(dateString, vrn, CLIENT_LIST_LIMIT, 'bottom'),
+          ]).then(([t, b]) => ({ data: mergeByTime(t?.data, b?.data) })),
           getLatestPackets(
             vrn || undefined,
             undefined,
@@ -144,15 +170,15 @@ export function useMonitorLive({ selectedDate, appliedVrn }) {
 
         if (Array.isArray(openRes?.data)) {
           setOpenAlerts(
-            openRes.data.slice(0, CLIENT_LIST_LIMIT).map(transformOpenAlert),
+            capPerZone(openRes.data, CLIENT_LIST_LIMIT).map(transformOpenAlert),
           );
         }
         if (Array.isArray(alertRes?.data)) {
           setAlerts(
-            alertRes.data
-              .filter(isVisibleEvent)
-              .slice(0, CLIENT_LIST_LIMIT)
-              .map(transformAlert),
+            capPerZone(
+              alertRes.data.filter(isVisibleEvent),
+              CLIENT_LIST_LIMIT,
+            ).map(transformAlert),
           );
         }
         if (Array.isArray(packetRes?.data)) {
@@ -170,8 +196,14 @@ export function useMonitorLive({ selectedDate, appliedVrn }) {
         }
       } else {
         const results = await Promise.allSettled([
-          getOpenAlerts(dateString, vrn, CLIENT_LIST_LIMIT),
-          getAlerts(dateString, vrn, CLIENT_LIST_LIMIT),
+          Promise.all([
+            getOpenAlerts(dateString, vrn, CLIENT_LIST_LIMIT, 'top'),
+            getOpenAlerts(dateString, vrn, CLIENT_LIST_LIMIT, 'bottom'),
+          ]).then(([t, b]) => ({ data: mergeByTime(t?.data, b?.data) })),
+          Promise.all([
+            getAlerts(dateString, vrn, CLIENT_LIST_LIMIT, 'top'),
+            getAlerts(dateString, vrn, CLIENT_LIST_LIMIT, 'bottom'),
+          ]).then(([t, b]) => ({ data: mergeByTime(t?.data, b?.data) })),
           getLatestPackets(
             vrn || undefined,
             undefined,
@@ -188,15 +220,15 @@ export function useMonitorLive({ selectedDate, appliedVrn }) {
 
         if (Array.isArray(openRes?.data)) {
           setOpenAlerts(
-            openRes.data.slice(0, CLIENT_LIST_LIMIT).map(transformOpenAlert),
+            capPerZone(openRes.data, CLIENT_LIST_LIMIT).map(transformOpenAlert),
           );
         }
         if (Array.isArray(alertRes?.data)) {
           setAlerts(
-            alertRes.data
-              .filter(isVisibleEvent)
-              .slice(0, CLIENT_LIST_LIMIT)
-              .map(transformAlert),
+            capPerZone(
+              alertRes.data.filter(isVisibleEvent),
+              CLIENT_LIST_LIMIT,
+            ).map(transformAlert),
           );
         }
         if (Array.isArray(packetRes?.data)) {
