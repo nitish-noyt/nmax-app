@@ -6,8 +6,8 @@ const native = NativeModules.AppConfig || {};
 export const APP_FLAVOR = native.APP_FLAVOR || 'admin';
 /** 'dev' | 'prod' — which server this build talks to */
 export const APP_ENV = native.APP_ENV || 'prod';
-export const APP_VERSION = native.APP_VERSION || '1.5.3';
-export const VERSION_CODE = native.VERSION_CODE || 11;
+export const APP_VERSION = native.APP_VERSION || '1.5.4';
+export const VERSION_CODE = native.VERSION_CODE || 12;
 export const APPLICATION_ID = native.APPLICATION_ID || 'com.nmax.admin';
 
 export const IS_CLIENT = APP_FLAVOR === 'client';

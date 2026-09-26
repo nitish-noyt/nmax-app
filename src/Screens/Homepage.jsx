@@ -880,15 +880,54 @@ const PacketCard = ({ packet, index }) => (
         </View>
       </View>
       <View style={styles.angleRow}>
-        <View style={styles.angleChip}>
-          <Text style={styles.angleChipText}>
-            Z <Text style={styles.angleStrong}>{formatAngle(packet.angleZ)}</Text>
-            {' · '}X{' '}
-            <Text style={styles.angleStrong}>{formatAngle(packet.angleX)}</Text>
-            {' · '}Y{' '}
-            <Text style={styles.angleStrong}>{formatAngle(packet.angleY)}</Text>
-          </Text>
-        </View>
+        {packet.magnetStatus != null || packet.deviceRole === 'bottom' ? (
+          /* A bottom packet has no angles — show what it does carry */
+          <>
+            <View
+              style={[
+                styles.angleChip,
+                packet.magnetStatus === 1
+                  ? styles.sensorChipOpen
+                  : styles.sensorChipClosed,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.angleChipText,
+                  packet.magnetStatus === 1
+                    ? styles.sensorTextOpen
+                    : styles.sensorTextClosed,
+                ]}
+              >
+                {packet.magnetStatus === 1 ? 'OPEN' : 'CLOSED'}
+              </Text>
+            </View>
+            {packet.temperature != null ? (
+              <View style={styles.angleChip}>
+                <Text style={styles.angleChipText}>
+                  <Text style={styles.angleStrong}>{packet.temperature}°C</Text>
+                </Text>
+              </View>
+            ) : null}
+            {packet.humidity != null ? (
+              <View style={styles.angleChip}>
+                <Text style={styles.angleChipText}>
+                  <Text style={styles.angleStrong}>{packet.humidity}%</Text>
+                </Text>
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <View style={styles.angleChip}>
+            <Text style={styles.angleChipText}>
+              Z <Text style={styles.angleStrong}>{formatAngle(packet.angleZ)}</Text>
+              {' · '}X{' '}
+              <Text style={styles.angleStrong}>{formatAngle(packet.angleX)}</Text>
+              {' · '}Y{' '}
+              <Text style={styles.angleStrong}>{formatAngle(packet.angleY)}</Text>
+            </Text>
+          </View>
+        )}
         {packet.battery != null ? (
           <View style={styles.angleChip}>
             <Text style={styles.angleChipText}>
@@ -1580,6 +1619,10 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 6,
   },
+  sensorChipOpen: { backgroundColor: '#fef2f2', borderColor: '#fecaca' },
+  sensorChipClosed: { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' },
+  sensorTextOpen: { color: '#dc2626', fontWeight: '800' },
+  sensorTextClosed: { color: '#16a34a', fontWeight: '800' },
   speedPill: {
     flexDirection: 'row',
     alignItems: 'center',

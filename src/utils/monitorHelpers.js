@@ -258,6 +258,10 @@ export function transformPacket(packet) {
     angleX: packet.angle_x,
     angleY: packet.angle_y,
     angleZ: packet.angle_z,
+    // Bottom packets carry open/close and climate instead of angles
+    magnetStatus: packet.magnet_status ?? null,
+    temperature: packet.temperature ?? null,
+    humidity: packet.humidity ?? null,
     battery: packet.battery,
     gatewayTime: packet.gatewayTime,
     createdAt: packet.createdAt,
