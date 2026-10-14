@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Image,
   StyleSheet,
@@ -55,6 +55,8 @@ import {
 
 const Homepage = () => {
   const [selectedDate, setSelectedDate] = useState('');
+  // True while selectedDate is just "today" — rolls over at IST midnight
+  const dateIsAutoRef = useRef(true);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [activeSection, setActiveSection] = useState('openTop');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -81,6 +83,18 @@ const Homepage = () => {
     setSelectedDate(getIstDateString(new Date()));
   }, []);
 
+  // An app left open overnight froze on yesterday: live events were
+  // date-filtered out and the poll kept refetching the old day. While the
+  // date is the automatic "today", midnight moves it forward.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!dateIsAutoRef.current) return;
+      const today = getIstDateString(new Date());
+      setSelectedDate(prev => (prev === today ? prev : today));
+    }, 60000);
+    return () => clearInterval(id);
+  }, []);
+
   useEffect(() => {
     if (activeSection !== 'status') {
       setStatusFilter('all');
@@ -92,7 +106,10 @@ const Homepage = () => {
   /* ---------------- Handlers ---------------- */
 
   const handleDateConfirm = date => {
-    setSelectedDate(getIstDateString(date));
+    const picked = getIstDateString(date);
+    // Picking today by hand still means "follow the clock"
+    dateIsAutoRef.current = picked === getIstDateString(new Date());
+    setSelectedDate(picked);
     setDatePickerVisible(false);
   };
 

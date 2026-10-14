@@ -305,8 +305,8 @@ export function emptySummary() {
 
 const SENSOR_FAULT_MS = 10 * 60 * 1000;
 
-/** Derive normal/faulty from last packet timestamp (10-minute rule). */
-export function deriveSensorStatus(lastSeenIso, nowMs = Date.now()) {
+/** Derive normal/faulty from last packet timestamp (server threshold, 10 min default). */
+export function deriveSensorStatus(lastSeenIso, nowMs = Date.now(), faultMs = SENSOR_FAULT_MS) {
   if (!lastSeenIso) {
     return { status: 'faulty', label: 'Faulty' };
   }
@@ -314,7 +314,7 @@ export function deriveSensorStatus(lastSeenIso, nowMs = Date.now()) {
   if (!Number.isFinite(t)) {
     return { status: 'faulty', label: 'Faulty' };
   }
-  if (nowMs - t > SENSOR_FAULT_MS) {
+  if (nowMs - t > faultMs) {
     return { status: 'faulty', label: 'Faulty' };
   }
   return { status: 'normal', label: 'Normal' };

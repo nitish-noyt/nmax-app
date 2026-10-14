@@ -38,39 +38,28 @@ const FAULT_MS = 10 * 60 * 1000;
 function applyPacketToSensorStatus(prev, incoming) {
   if (!incoming?.vrn || !incoming?.deviceRole) return prev;
   const role = incoming.deviceRole;
-  if (role !== 'movable' && role !== 'fixed') return prev;
+  if (role !== 'movable' && role !== 'fixed' && role !== 'bottom') return prev;
 
   const ts = incoming.gatewayTime || incoming.createdAt;
   if (!ts) return prev;
 
-  const lastSeen = new Date(ts).toISOString();
-  const nowMs = Date.now();
-  const entry = deriveSensorStatus(lastSeen, nowMs);
-
   const vehicles = [...(prev?.vehicles || [])];
   const idx = vehicles.findIndex(v => v.vrn === incoming.vrn);
-  if (idx >= 0) {
-    const v = { ...vehicles[idx] };
-    v[role] = { status: entry.status, lastSeen };
-    vehicles[idx] = v;
-  } else {
-    vehicles.push({
-      vrn: incoming.vrn,
-      movable:
-        role === 'movable'
-          ? { status: entry.status, lastSeen }
-          : { status: 'faulty', lastSeen: null },
-      fixed:
-        role === 'fixed'
-          ? { status: entry.status, lastSeen }
-          : { status: 'faulty', lastSeen: null },
-    });
-  }
+  // The server's status response is the source of truth for which sensors
+  // a tanker is fitted with — a stray packet must not invent a vehicle or
+  // a zone (that painted phantom "Faulty" rows for bottom-only tankers).
+  if (idx < 0) return prev;
+  const v = { ...vehicles[idx] };
+  if (!v[role]) return prev;
 
-  return {
-    thresholdMinutes: prev?.thresholdMinutes ?? FAULT_MS / 60000,
-    vehicles,
-  };
+  const lastSeen = new Date(ts).toISOString();
+  const faultMs = (prev?.thresholdMinutes ?? FAULT_MS / 60000) * 60000;
+  const entry = deriveSensorStatus(lastSeen, Date.now(), faultMs);
+  // Keep activeFault and the rest — a packet only proves freshness
+  v[role] = { ...v[role], status: entry.status, lastSeen };
+  vehicles[idx] = v;
+
+  return { ...prev, vehicles };
 }
 
 /**
@@ -273,7 +262,8 @@ export function useMonitorLive({ selectedDate, appliedVrn }) {
       setOpenAlerts(prev => {
         const exists = prev.some(a => a.id === item.id);
         if (!exists) bumpSummary('openAlerts', 1);
-        return prependUnique(prev, item, { limit: CLIENT_LIST_LIMIT });
+        // Per-zone cap: one busy top day must not evict the bottom rows
+        return capPerZone(prependUnique(prev, item), CLIENT_LIST_LIMIT);
       });
     },
     [bumpSummary],
@@ -302,7 +292,7 @@ export function useMonitorLive({ selectedDate, appliedVrn }) {
       setAlerts(prev => {
         const exists = prev.some(a => a.id === item.id);
         if (!exists) bumpSummary('securityAlerts', 1);
-        return prependUnique(prev, item, { limit: CLIENT_LIST_LIMIT });
+        return capPerZone(prependUnique(prev, item), CLIENT_LIST_LIMIT);
       });
     },
     [bumpSummary],
@@ -356,18 +346,24 @@ export function useMonitorLive({ selectedDate, appliedVrn }) {
       setSensorStatus(prev => {
         if (!prev?.vehicles?.length) return prev;
         const nowMs = Date.now();
+        const faultMs = (prev.thresholdMinutes ?? FAULT_MS / 60000) * 60000;
+        // Unfitted zones arrive as null and must stay null — spreading
+        // null fabricated phantom "Faulty" sensors on bottom-only tankers
+        const rederive = sensor =>
+          sensor
+            ? {
+                ...sensor,
+                status: deriveSensorStatus(sensor.lastSeen, nowMs, faultMs)
+                  .status,
+              }
+            : sensor ?? null;
         return {
           ...prev,
           vehicles: prev.vehicles.map(v => ({
             ...v,
-            movable: {
-              ...v.movable,
-              status: deriveSensorStatus(v.movable?.lastSeen, nowMs).status,
-            },
-            fixed: {
-              ...v.fixed,
-              status: deriveSensorStatus(v.fixed?.lastSeen, nowMs).status,
-            },
+            movable: rederive(v.movable),
+            fixed: rederive(v.fixed),
+            bottom: rederive(v.bottom),
           })),
         };
       });
