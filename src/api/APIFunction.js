@@ -7,12 +7,15 @@ const API = axios.create({
   timeout: 20000,
 });
 
-function buildParams({ date, vrn, role, limit, openAlertOnly } = {}) {
+function buildParams({ date, vrn, role, limit, openAlertOnly, zone } = {}) {
   const params = {};
   if (date) params.date = date;
   if (vrn?.trim()) params.vrn = vrn.trim();
   if (role) params.role = role;
   if (limit != null) params.limit = limit;
+  // Without this the top/bottom requests are identical unzoned queries and
+  // a busy day's top rows push every bottom row out of the capped response
+  if (zone) params.zone = zone;
   if (openAlertOnly === true || openAlertOnly === 'true') {
     params.openAlertOnly = true;
   }
